@@ -81,6 +81,8 @@
 //! - **Memory constrained**: `VecStore` - smallest memory footprint (~17 bytes/UUID)
 //! - **Worst-case optimization**: `FullHashStore` - best for mask=0 queries
 
+mod algorithm;
+mod builder;
 mod error;
 mod loader;
 mod store_fullhash;
@@ -88,6 +90,8 @@ mod store_hashmap;
 mod store_hybrid;
 mod store_vecstore;
 
+pub use algorithm::StoreAlgorithm;
+pub use builder::StoreBuilder;
 pub use error::{Result, StoreError};
 pub use loader::{
     load_default_from_csv, load_from_csv, load_fullhash_from_csv, load_hashmap_from_csv,

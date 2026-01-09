@@ -1,12 +1,16 @@
 #[macro_use]
 extern crate rocket;
 
+mod error;
 mod models;
 mod routes;
 
 use clap::Parser;
-use occlusion::{load_from_csv, load_fullhash_from_csv, load_hashmap_from_csv, load_hybrid_from_csv, Store};
+use error::Result;
+use occlusion::{Store, StoreAlgorithm, StoreBuilder};
 use std::sync::Arc;
+use tracing::{error, info};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// High-performance authorization server for UUID visibility lookups
 #[derive(Parser, Debug)]
@@ -19,85 +23,63 @@ struct Args {
 
     /// Store implementation algorithm
     #[arg(short, long, value_name = "ALGORITHM", default_value = "hashmap")]
-    #[arg(value_parser = ["hashmap", "vec", "hybrid", "fullhash"])]
-    algorithm: String,
+    algorithm: StoreAlgorithm,
+}
+
+/// Initialize tracing subscriber for structured logging
+fn init_tracing() {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+}
+
+/// Load the store based on the algorithm and data file
+fn load_store(algorithm: StoreAlgorithm, data_path: &str) -> Result<Arc<dyn Store>> {
+    info!(
+        algorithm = %algorithm,
+        data_file = %data_path,
+        "Loading authorization store"
+    );
+
+    let store = StoreBuilder::new()
+        .algorithm(algorithm)
+        .load_from_csv(data_path)?;
+
+    let distribution = store.visibility_distribution();
+    let total_levels = distribution.len();
+
+    info!(
+        algorithm = %algorithm,
+        uuid_count = store.len(),
+        unique_levels = total_levels,
+        "Store loaded successfully"
+    );
+
+    Ok(store)
 }
 
 #[launch]
 fn rocket() -> _ {
+    // Initialize tracing
+    init_tracing();
+
     // Parse command line arguments
     let args = Args::parse();
-    let data_path = args.data_file;
-    let store_type = args.algorithm.to_lowercase();
 
-    // Load the authorization store
-    println!("Loading data from: {}", data_path);
-    println!("Store type: {}", store_type);
-
-    let store: Arc<dyn Store> = match store_type.as_str() {
-        "hashmap" => match load_hashmap_from_csv(&data_path) {
-            Ok(store) => {
-                println!("✓ Loaded {} UUIDs using HashMap store", store.len());
-                Arc::new(store)
-            }
-            Err(e) => {
-                eprintln!("Error loading data: {}", e);
-                std::process::exit(1);
-            }
-        },
-        "vec" => match load_from_csv(&data_path) {
-            Ok(store) => {
-                println!("✓ Loaded {} UUIDs using sorted vector store", store.len());
-                Arc::new(store)
-            }
-            Err(e) => {
-                eprintln!("Error loading data: {}", e);
-                std::process::exit(1);
-            }
-        },
-        "hybrid" => {
-            match load_hybrid_from_csv(&data_path) {
-                Ok(store) => {
-                    let stats = store.distribution_stats();
-                    println!("✓ Loaded {} UUIDs using hybrid store", store.len());
-                    println!("  Distribution: {}", stats);
-
-                    // Warn if distribution is not skewed
-                    if stats.level_0_percentage < 70.0 {
-                        eprintln!(
-                            "⚠ Warning: Only {:.1}% of UUIDs at level 0",
-                            stats.level_0_percentage
-                        );
-                        eprintln!("  Hybrid store is optimized for 80-90% at level 0");
-                        eprintln!("  Consider using --algorithm hashmap for better performance");
-                    }
-
-                    Arc::new(store)
-                }
-                Err(e) => {
-                    eprintln!("Error loading data: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        "fullhash" => match load_fullhash_from_csv(&data_path) {
-            Ok(store) => {
-                let stats = store.distribution_stats();
-                println!("✓ Loaded {} UUIDs using full hash store", store.len());
-                println!("  Distribution: {}", stats);
-                Arc::new(store)
-            }
-            Err(e) => {
-                eprintln!("Error loading data: {}", e);
-                std::process::exit(1);
-            }
-        },
-        _ => {
-            eprintln!("Invalid algorithm: {}", store_type);
-            eprintln!("Valid options: hashmap (default), vec, hybrid, fullhash");
+    // Load the store
+    let store = match load_store(args.algorithm, &args.data_file) {
+        Ok(store) => store,
+        Err(e) => {
+            error!(error = %e, "Failed to start server");
             std::process::exit(1);
         }
     };
+
+    info!("Starting Rocket server");
 
     // Build and launch Rocket server
     rocket::build().manage(store).mount(
