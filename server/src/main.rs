@@ -8,7 +8,6 @@ mod routes;
 use clap::Parser;
 use error::Result;
 use occlusion::{Store, StoreAlgorithm, StoreBuilder};
-use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -30,15 +29,14 @@ struct Args {
 fn init_tracing() {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
 }
 
 /// Load the store based on the algorithm and data file
-fn load_store(algorithm: StoreAlgorithm, data_path: &str) -> Result<Arc<dyn Store>> {
+fn load_store(algorithm: StoreAlgorithm, data_path: &str) -> Result<Box<dyn Store>> {
     info!(
         algorithm = %algorithm,
         data_file = %data_path,

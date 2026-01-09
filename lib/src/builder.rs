@@ -3,7 +3,6 @@ use crate::error::Result;
 use crate::loader::{load_from_csv, load_fullhash_from_csv, load_hashmap_from_csv, load_hybrid_from_csv};
 use crate::Store;
 use std::path::Path;
-use std::sync::Arc;
 
 /// Builder for constructing store instances.
 ///
@@ -42,7 +41,7 @@ impl StoreBuilder {
 
     /// Load a store from a CSV file using the configured algorithm.
     ///
-    /// Returns a trait object that can be used polymorphically.
+    /// Returns a boxed trait object that implements the Store trait.
     ///
     /// # Errors
     ///
@@ -51,25 +50,14 @@ impl StoreBuilder {
     /// - The CSV format is invalid
     /// - Any UUID cannot be parsed
     /// - Duplicate UUIDs are found
-    pub fn load_from_csv<P: AsRef<Path>>(self, path: P) -> Result<Arc<dyn Store>> {
-        match self.algorithm {
-            StoreAlgorithm::HashMap => {
-                let store = load_hashmap_from_csv(path)?;
-                Ok(Arc::new(store))
-            }
-            StoreAlgorithm::Vec => {
-                let store = load_from_csv(path)?;
-                Ok(Arc::new(store))
-            }
-            StoreAlgorithm::Hybrid => {
-                let store = load_hybrid_from_csv(path)?;
-                Ok(Arc::new(store))
-            }
-            StoreAlgorithm::FullHash => {
-                let store = load_fullhash_from_csv(path)?;
-                Ok(Arc::new(store))
-            }
-        }
+    pub fn load_from_csv<P: AsRef<Path>>(self, path: P) -> Result<Box<dyn Store>> {
+        let store: Box<dyn Store> = match self.algorithm {
+            StoreAlgorithm::HashMap => Box::new(load_hashmap_from_csv(path)?),
+            StoreAlgorithm::Vec => Box::new(load_from_csv(path)?),
+            StoreAlgorithm::Hybrid => Box::new(load_hybrid_from_csv(path)?),
+            StoreAlgorithm::FullHash => Box::new(load_fullhash_from_csv(path)?),
+        };
+        Ok(store)
     }
 
     /// Get the currently configured algorithm.
