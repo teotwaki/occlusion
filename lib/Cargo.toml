@@ -14,12 +14,8 @@ hybrid = []
 fullhash = []
 # Enable all stores for benchmarking comparisons
 bench = []
-# Enable URL loading (adds reqwest dependency)
-url = ["dep:reqwest"]
 
 [dependencies]
-csv = "1.4.0"
-reqwest = { version = "0.13", features = ["blocking"], optional = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }

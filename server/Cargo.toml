@@ -4,21 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["url"]
+default = []
 # Use std HashMap instead of FxHash
 nofx = ["occlusion/nofx"]
 # Alternative store implementations
 vec = ["occlusion/vec"]
 hybrid = ["occlusion/hybrid"]
 fullhash = ["occlusion/fullhash"]
-# Enable URL loading
-url = ["occlusion/url"]
 
 [dependencies]
 occlusion = { path = "../lib" }
 rustc-hash = { workspace = true }
 
 clap = { version = "4.5.54", features = ["derive"] }
+csv = "1.4.0"
+reqwest = "0.13"
 rocket = { version = "0.5", features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"

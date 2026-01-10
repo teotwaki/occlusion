@@ -1,8 +1,9 @@
-use crate::ReloadState;
+use crate::loader::load_from_source;
 use crate::models::*;
-use occlusion::{Store, SwappableStore, load_from_source};
-use rocket::State;
+use crate::ReloadState;
+use occlusion::{Store, SwappableStore};
 use rocket::serde::json::Json;
+use rocket::State;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -134,11 +135,11 @@ pub fn opa_level(
 /// Forces an immediate reload of the data from the configured source,
 /// regardless of whether the source has changed.
 #[post("/api/v1/admin/reload")]
-pub fn reload(
+pub async fn reload(
     store: &State<SwappableStore>,
     reload_state: &State<Arc<ReloadState>>,
 ) -> Json<ReloadResponse> {
-    match load_from_source(&reload_state.source) {
+    match load_from_source(&reload_state.source).await {
         Ok((new_store, new_metadata)) => {
             let count = new_store.len();
             store.swap(new_store);

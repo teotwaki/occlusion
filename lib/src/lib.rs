@@ -43,25 +43,24 @@
 //! ## Example
 //!
 //! ```ignore
-//! use occlusion::{load_from_csv, Store};
+//! use occlusion::{build_store, Store};
+//! use uuid::Uuid;
 //!
-//! // Load from CSV file (uses compile-time selected implementation)
-//! let store = load_from_csv("data.csv")?;
+//! // Build store from entries
+//! let entries = vec![
+//!     (Uuid::new_v4(), 0),   // Level 0 - visible to all
+//!     (Uuid::new_v4(), 10),  // Level 10
+//! ];
+//! let store = build_store(entries)?;
 //!
 //! // Check single UUID
 //! let uuid = "550e8400-e29b-41d4-a716-446655440000".parse()?;
 //! if store.is_visible(&uuid, 10) {
 //!     println!("UUID is visible at level 10");
 //! }
-//!
-//! // Batch check
-//! let uuids = vec![uuid1, uuid2, uuid3];
-//! let results = store.check_batch(&uuids, 10);
 //! ```
 
 mod error;
-mod loader;
-mod source;
 
 // Store modules - conditionally compiled based on features
 // HashMapStore is always available (default)
@@ -79,15 +78,7 @@ mod store_fullhash;
 
 // Re-exports
 pub use error::{Result, StoreError};
-pub use loader::{check_source_changed, load_from_csv, load_from_source};
-pub use source::{DataSource, SourceMetadata};
 pub use store_hashmap::HashMapStore;
-
-// Bench-only exports for benchmark comparisons
-#[cfg(feature = "bench")]
-pub use loader::{
-    load_fullhash_from_csv, load_hashmap_from_csv, load_hybrid_from_csv, load_vec_from_csv,
-};
 
 // Conditional re-exports for bench mode
 #[cfg(any(feature = "bench", feature = "vec"))]
@@ -139,6 +130,50 @@ pub type ActiveStore = VecStore;
 #[cfg(not(any(feature = "vec", feature = "hybrid", feature = "fullhash")))]
 pub type ActiveStore = HashMapStore;
 
+/// Build an ActiveStore from a vector of (UUID, visibility_level) pairs.
+///
+/// The store implementation is selected at compile time based on feature flags.
+#[cfg(feature = "fullhash")]
+pub fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
+    FullHashStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(all(feature = "hybrid", not(feature = "fullhash")))]
+pub fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
+    HybridAuthStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(all(feature = "vec", not(feature = "hybrid"), not(feature = "fullhash")))]
+pub fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
+    VecStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(not(any(feature = "vec", feature = "hybrid", feature = "fullhash")))]
+pub fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
+    HashMapStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
 // Swappable store for runtime reloading
 mod swappable;
 pub use swappable::SwappableStore;
+
+// Bench-only store builders for benchmark comparisons
+#[cfg(feature = "bench")]
+pub fn build_hashmap_store(entries: Vec<(Uuid, u8)>) -> Result<HashMapStore> {
+    HashMapStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(feature = "bench")]
+pub fn build_vec_store(entries: Vec<(Uuid, u8)>) -> Result<VecStore> {
+    VecStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(feature = "bench")]
+pub fn build_hybrid_store(entries: Vec<(Uuid, u8)>) -> Result<HybridAuthStore> {
+    HybridAuthStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(feature = "bench")]
+pub fn build_fullhash_store(entries: Vec<(Uuid, u8)>) -> Result<FullHashStore> {
+    FullHashStore::new(entries).map_err(StoreError::InvalidFormat)
+}

@@ -2,15 +2,17 @@
 extern crate rocket;
 
 mod error;
+mod loader;
 mod models;
 mod routes;
+mod source;
 
 use clap::Parser;
 use error::Result;
-use occlusion::{
-    DataSource, SourceMetadata, Store, SwappableStore, check_source_changed, load_from_source,
-};
+use loader::{check_source_changed, load_from_source};
+use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;
+use source::{DataSource, SourceMetadata};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -46,11 +48,11 @@ fn init_tracing() {
         .init();
 }
 
-/// Load the store from the data source
-fn load_store(source: &DataSource) -> Result<(SwappableStore, SourceMetadata)> {
+/// Load the store from the data source (async for URL support)
+async fn load_store_async(source: &DataSource) -> Result<(SwappableStore, SourceMetadata)> {
     info!(source = %source, "Loading authorization store");
 
-    let (store, metadata) = load_from_source(source)?;
+    let (store, metadata) = load_from_source(source).await?;
 
     info!(uuid_count = store.len(), "Store loaded successfully");
 
@@ -74,17 +76,19 @@ fn spawn_reload_scheduler(
 
             info!(source = %reload_state.source, "Checking for data source changes");
 
-            // Check if the source has changed
-            let should_reload = {
+            // Clone to avoid holding lock across await
+            let old_metadata = {
                 let metadata = reload_state.metadata.read().expect("RwLock poisoned");
-                match check_source_changed(&reload_state.source, &metadata) {
+                metadata.clone()
+            };
+            let should_reload =
+                match check_source_changed(&reload_state.source, &old_metadata).await {
                     Ok(changed) => changed,
                     Err(e) => {
                         warn!(error = %e, "Failed to check source changes, will attempt reload");
                         true
                     }
-                }
-            };
+                };
 
             if !should_reload {
                 info!("Source unchanged, skipping reload");
@@ -93,12 +97,11 @@ fn spawn_reload_scheduler(
 
             info!("Source changed, reloading store");
 
-            match load_from_source(&reload_state.source) {
+            match load_from_source(&reload_state.source).await {
                 Ok((new_store, new_metadata)) => {
                     let count = new_store.len();
                     store.swap(new_store);
 
-                    // Update metadata
                     let mut metadata = reload_state.metadata.write().expect("RwLock poisoned");
                     *metadata = new_metadata;
 
@@ -113,18 +116,13 @@ fn spawn_reload_scheduler(
 }
 
 #[launch]
-fn rocket() -> _ {
-    // Initialize tracing
+async fn rocket() -> _ {
     init_tracing();
 
-    // Parse command line arguments
     let args = Args::parse();
-
-    // Parse the data source
     let source = DataSource::parse(&args.data_source);
 
-    // Load the initial store
-    let (store, metadata) = match load_store(&source) {
+    let (store, metadata) = match load_store_async(&source).await {
         Ok(result) => result,
         Err(e) => {
             error!(error = %e, "Failed to start server");
@@ -132,13 +130,11 @@ fn rocket() -> _ {
         }
     };
 
-    // Create reload state for the scheduler
     let reload_state = Arc::new(ReloadState {
         source: source.clone(),
         metadata: RwLock::new(metadata),
     });
 
-    // Start the reload scheduler if interval > 0
     if args.reload_interval > 0 {
         info!(
             interval_mins = args.reload_interval,
@@ -149,10 +145,8 @@ fn rocket() -> _ {
 
     info!("Starting Rocket server");
 
-    // Configure Rocket with colors disabled
     let figment = Figment::from(rocket::Config::default()).merge(("cli_colors", false));
 
-    // Build and launch Rocket server
     rocket::custom(figment)
         .manage(store)
         .manage(reload_state)
