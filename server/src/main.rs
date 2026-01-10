@@ -30,6 +30,10 @@ struct Args {
     /// Reload interval in minutes (0 = no auto-reload)
     #[arg(long, default_value = "0", env = "OCCLUSION_RELOAD_INTERVAL")]
     reload_interval: u64,
+
+    /// Output logs as JSON
+    #[arg(long, env = "OCCLUSION_JSON_LOGS")]
+    json_logs: bool,
 }
 
 /// Shared state for the reload scheduler
@@ -39,13 +43,21 @@ pub struct ReloadState {
 }
 
 /// Initialize tracing subscriber for structured logging
-fn init_tracing() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+fn init_tracing(json: bool) {
+    let env_filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+
+    if json {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer().json())
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
 }
 
 /// Load the store from the data source (async for URL support)
@@ -104,9 +116,9 @@ fn spawn_reload_scheduler(
 
 #[launch]
 async fn rocket() -> _ {
-    init_tracing();
-
     let args = Args::parse();
+    init_tracing(args.json_logs);
+
     let source = DataSource::parse(&args.data_source);
 
     let (store, metadata) = match load_store_async(&source).await {
