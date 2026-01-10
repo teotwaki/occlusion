@@ -1,8 +1,8 @@
 //! Generate CSV test data for the occlusion server.
 
 use clap::Parser;
+use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use uuid::Uuid;
@@ -43,8 +43,8 @@ fn main() -> io::Result<()> {
 
     // Initialize RNG
     let mut rng = match args.seed {
-        Some(seed) => ChaCha8Rng::seed_from_u64(seed),
-        None => ChaCha8Rng::from_os_rng(),
+        Some(seed) => StdRng::seed_from_u64(seed),
+        None => StdRng::from_os_rng(),
     };
 
     // Determine output destination
