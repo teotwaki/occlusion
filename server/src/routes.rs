@@ -61,7 +61,7 @@ pub fn health(store: &State<SwappableStore>) -> Json<HealthResponse> {
 pub fn stats(store: &State<SwappableStore>) -> Json<StatsResponse> {
     Json(StatsResponse {
         total_uuids: store.len(),
-        visibility_distribution: store.visibility_distribution(),
+        visibility_distribution: store.visibility_distribution().into_iter().collect(),
     })
 }
 

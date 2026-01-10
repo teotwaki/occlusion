@@ -1,11 +1,6 @@
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-#[cfg(not(feature = "nofx"))]
-use rustc_hash::FxHashMap as HashMap;
-
-#[cfg(feature = "nofx")]
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Request to check if a single object is visible
 #[derive(Debug, Deserialize, Serialize)]

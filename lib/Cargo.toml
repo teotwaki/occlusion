@@ -19,7 +19,6 @@ bench = []
 
 [dependencies]
 rustc-hash = { workspace = true }
-serde = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 

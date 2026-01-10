@@ -1,5 +1,4 @@
 use crate::{HashMap, StoreError};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Sorted vector authorization store containing UUID-visibility mappings.
@@ -17,7 +16,7 @@ use uuid::Uuid;
 /// - Point lookup: ~51ns
 /// - Batch (100): ~8µs
 /// - Memory: ~17 bytes/UUID (most efficient)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct VecStore {
     /// Sorted array of (UUID, visibility_level) pairs
     entries: Vec<(Uuid, u8)>,

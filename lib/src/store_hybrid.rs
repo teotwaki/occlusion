@@ -1,5 +1,4 @@
 use crate::{HashMap, HashSet, Store, StoreError};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Hybrid authorization store optimized for skewed distributions.
@@ -21,7 +20,7 @@ use uuid::Uuid;
 /// - Higher level lookup: ~48ns (10% of queries)
 /// - Batch (100): ~780ns
 /// - Memory: ~24 bytes/UUID for level 0, ~17 for others
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct HybridAuthStore {
     /// HashSet for O(1) lookup of UUIDs at visibility level 0
     level_0: HashSet<Uuid>,
