@@ -1,14 +1,16 @@
+use crate::ReloadState;
 use crate::models::*;
-use occlusion::{ActiveStore, Store};
-use rocket::serde::json::Json;
+use occlusion::{Store, SwappableStore, load_from_source};
 use rocket::State;
+use rocket::serde::json::Json;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Check if a single object is visible under the given visibility mask
 ///
 /// POST /api/v1/check
 #[post("/api/v1/check", data = "<request>")]
-pub fn check(store: &State<ActiveStore>, request: Json<CheckRequest>) -> Json<CheckResponse> {
+pub fn check(store: &State<SwappableStore>, request: Json<CheckRequest>) -> Json<CheckResponse> {
     let is_visible = store.is_visible(&request.object, request.visibility_mask);
 
     Json(CheckResponse {
@@ -22,7 +24,7 @@ pub fn check(store: &State<ActiveStore>, request: Json<CheckRequest>) -> Json<Ch
 /// POST /api/v1/check/batch
 #[post("/api/v1/check/batch", data = "<request>")]
 pub fn check_batch(
-    store: &State<ActiveStore>,
+    store: &State<SwappableStore>,
     request: Json<BatchCheckRequest>,
 ) -> Json<BatchCheckResponse> {
     let results = request
@@ -44,7 +46,7 @@ pub fn check_batch(
 ///
 /// GET /health
 #[get("/health")]
-pub fn health(store: &State<ActiveStore>) -> Json<HealthResponse> {
+pub fn health(store: &State<SwappableStore>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
         uuid_count: store.len(),
@@ -55,7 +57,7 @@ pub fn health(store: &State<ActiveStore>) -> Json<HealthResponse> {
 ///
 /// GET /api/v1/stats
 #[get("/api/v1/stats")]
-pub fn stats(store: &State<ActiveStore>) -> Json<StatsResponse> {
+pub fn stats(store: &State<SwappableStore>) -> Json<StatsResponse> {
     Json(StatsResponse {
         total_uuids: store.len(),
         visibility_distribution: store.visibility_distribution(),
@@ -74,7 +76,7 @@ pub fn stats(store: &State<ActiveStore>) -> Json<StatsResponse> {
 /// Response: `{"result": true}`
 #[post("/v1/data/occlusion/visible", data = "<request>")]
 pub fn opa_visible(
-    store: &State<ActiveStore>,
+    store: &State<SwappableStore>,
     request: Json<OpaRequest<OpaVisibleInput>>,
 ) -> Json<OpaResponse<bool>> {
     let is_visible = store.is_visible(&request.input.object, request.input.visibility_mask);
@@ -89,14 +91,19 @@ pub fn opa_visible(
 /// Response: `{"result": {"uuid1": true, "uuid2": false}}`
 #[post("/v1/data/occlusion/visible_batch", data = "<request>")]
 pub fn opa_visible_batch(
-    store: &State<ActiveStore>,
+    store: &State<SwappableStore>,
     request: Json<OpaRequest<OpaBatchVisibleInput>>,
 ) -> Json<OpaResponse<HashMap<uuid::Uuid, bool>>> {
     let results: HashMap<_, _> = request
         .input
         .objects
         .iter()
-        .map(|object| (*object, store.is_visible(object, request.input.visibility_mask)))
+        .map(|object| {
+            (
+                *object,
+                store.is_visible(object, request.input.visibility_mask),
+            )
+        })
         .collect();
     Json(OpaResponse { result: results })
 }
@@ -109,20 +116,70 @@ pub fn opa_visible_batch(
 /// Response: `{"result": 8}` or `{"result": null}` if not found
 #[post("/v1/data/occlusion/level", data = "<request>")]
 pub fn opa_level(
-    store: &State<ActiveStore>,
+    store: &State<SwappableStore>,
     request: Json<OpaRequest<OpaLevelInput>>,
 ) -> Json<OpaResponse<Option<u8>>> {
     let level = store.get_visibility(&request.input.object);
     Json(OpaResponse { result: level })
 }
 
+// ============================================================================
+// Admin Endpoints
+// ============================================================================
+
+/// Trigger a manual reload of the data source
+///
+/// POST /api/v1/admin/reload
+///
+/// Forces an immediate reload of the data from the configured source,
+/// regardless of whether the source has changed.
+#[post("/api/v1/admin/reload")]
+pub fn reload(
+    store: &State<SwappableStore>,
+    reload_state: &State<Arc<ReloadState>>,
+) -> Json<ReloadResponse> {
+    match load_from_source(&reload_state.source) {
+        Ok((new_store, new_metadata)) => {
+            let count = new_store.len();
+            store.swap(new_store);
+
+            // Update metadata
+            let mut metadata = reload_state.metadata.write().expect("RwLock poisoned");
+            *metadata = new_metadata;
+
+            Json(ReloadResponse {
+                success: true,
+                uuid_count: count,
+                message: "Store reloaded successfully".to_string(),
+            })
+        }
+        Err(e) => Json(ReloadResponse {
+            success: false,
+            uuid_count: store.len(),
+            message: format!("Reload failed: {}", e),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use occlusion::HashMapStore;
     use rocket::http::{ContentType, Status};
     use rocket::local::blocking::Client;
     use uuid::Uuid;
+
+    // Import the appropriate store constructor based on active features
+    #[cfg(feature = "fullhash")]
+    use occlusion::FullHashStore as TestStore;
+
+    #[cfg(all(feature = "hybrid", not(feature = "fullhash")))]
+    use occlusion::HybridAuthStore as TestStore;
+
+    #[cfg(all(feature = "vec", not(feature = "hybrid"), not(feature = "fullhash")))]
+    use occlusion::VecStore as TestStore;
+
+    #[cfg(not(any(feature = "vec", feature = "hybrid", feature = "fullhash")))]
+    use occlusion::HashMapStore as TestStore;
 
     fn create_test_client() -> Client {
         // Create a store with test data
@@ -132,9 +189,10 @@ mod tests {
             (Uuid::from_u128(3), 10), // Level 10
             (Uuid::from_u128(4), 15), // Level 15
         ];
-        let store = HashMapStore::new(entries).unwrap();
+        let store = TestStore::new(entries).unwrap();
+        let swappable = SwappableStore::new(store);
 
-        let rocket = rocket::build().manage(store).mount(
+        let rocket = rocket::build().manage(swappable).mount(
             "/",
             routes![
                 check,
@@ -220,8 +278,8 @@ mod tests {
         assert_eq!(response.status(), Status::Ok);
         let body: BatchCheckResponse = response.into_json().unwrap();
         assert_eq!(body.results.len(), 3);
-        assert!(body.results[0].is_visible);  // Level 0 <= 10
-        assert!(body.results[1].is_visible);  // Level 5 <= 10
+        assert!(body.results[0].is_visible); // Level 0 <= 10
+        assert!(body.results[1].is_visible); // Level 5 <= 10
         assert!(!body.results[2].is_visible); // Level 15 > 10
     }
 
@@ -311,8 +369,8 @@ mod tests {
         assert_eq!(response.status(), Status::Ok);
         let body: OpaResponse<HashMap<Uuid, bool>> = response.into_json().unwrap();
         assert_eq!(body.result.len(), 3);
-        assert_eq!(body.result.get(&Uuid::from_u128(1)), Some(&true));  // Level 0
-        assert_eq!(body.result.get(&Uuid::from_u128(2)), Some(&true));  // Level 5
+        assert_eq!(body.result.get(&Uuid::from_u128(1)), Some(&true)); // Level 0
+        assert_eq!(body.result.get(&Uuid::from_u128(2)), Some(&true)); // Level 5
         assert_eq!(body.result.get(&Uuid::from_u128(4)), Some(&false)); // Level 15
     }
 
@@ -322,10 +380,7 @@ mod tests {
         let response = client
             .post("/v1/data/occlusion/level")
             .header(ContentType::JSON)
-            .body(format!(
-                r#"{{"input": {{"object": "{}"}}}}"#,
-                uuid_str(3)
-            ))
+            .body(format!(r#"{{"input": {{"object": "{}"}}}}"#, uuid_str(3)))
             .dispatch();
 
         assert_eq!(response.status(), Status::Ok);
@@ -339,10 +394,7 @@ mod tests {
         let response = client
             .post("/v1/data/occlusion/level")
             .header(ContentType::JSON)
-            .body(format!(
-                r#"{{"input": {{"object": "{}"}}}}"#,
-                uuid_str(999)
-            ))
+            .body(format!(r#"{{"input": {{"object": "{}"}}}}"#, uuid_str(999)))
             .dispatch();
 
         assert_eq!(response.status(), Status::Ok);

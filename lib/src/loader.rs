@@ -1,5 +1,6 @@
 use crate::ActiveStore;
 use crate::error::{Result, StoreError};
+use crate::source::{DataSource, SourceMetadata};
 
 #[cfg(any(
     feature = "bench",
@@ -8,8 +9,12 @@ use crate::error::{Result, StoreError};
 use crate::store_hashmap::HashMapStore;
 use csv::ReaderBuilder;
 use serde::Deserialize;
+use std::io::Read;
 use std::path::Path;
 use uuid::Uuid;
+
+#[cfg(feature = "url")]
+use std::io::Cursor;
 
 #[cfg(any(feature = "bench", feature = "fullhash"))]
 use crate::store_fullhash::FullHashStore;
@@ -26,15 +31,15 @@ struct CsvRecord {
     visibility_level: u8,
 }
 
-/// Load entries from a CSV file.
+/// Core CSV parsing from any reader.
 ///
-/// Common helper that parses the CSV and returns a vector of (UUID, visibility) pairs.
-fn load_entries<P: AsRef<Path>>(path: P) -> Result<Vec<(Uuid, u8)>> {
-    let mut reader = ReaderBuilder::new().has_headers(true).from_path(path)?;
+/// This is the shared implementation used by all loaders (file, URL, string).
+fn load_entries_from_reader<R: Read>(reader: R) -> Result<Vec<(Uuid, u8)>> {
+    let mut csv_reader = ReaderBuilder::new().has_headers(true).from_reader(reader);
 
     let mut entries = Vec::new();
 
-    for (line_num, result) in reader.deserialize().enumerate() {
+    for (line_num, result) in csv_reader.deserialize().enumerate() {
         let record: CsvRecord = result?;
 
         let uuid = record
@@ -46,6 +51,13 @@ fn load_entries<P: AsRef<Path>>(path: P) -> Result<Vec<(Uuid, u8)>> {
     }
 
     Ok(entries)
+}
+
+/// Load entries from a CSV file.
+fn load_entries<P: AsRef<Path>>(path: P) -> Result<Vec<(Uuid, u8)>> {
+    let file =
+        std::fs::File::open(path.as_ref()).map_err(|e| StoreError::IoError(e.to_string()))?;
+    load_entries_from_reader(file)
 }
 
 /// Load the active store implementation from a CSV file.
@@ -91,6 +103,134 @@ pub fn load_from_csv<P: AsRef<Path>>(path: P) -> Result<ActiveStore> {
 pub fn load_from_csv<P: AsRef<Path>>(path: P) -> Result<ActiveStore> {
     let entries = load_entries(path)?;
     HashMapStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+// ============================================================================
+// Source-based loading (file or URL)
+// ============================================================================
+
+/// Build ActiveStore from entries (shared by all loaders).
+#[cfg(feature = "fullhash")]
+fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
+    FullHashStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(all(feature = "hybrid", not(feature = "fullhash")))]
+fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
+    HybridAuthStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(all(feature = "vec", not(feature = "hybrid"), not(feature = "fullhash")))]
+fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
+    VecStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(not(any(feature = "vec", feature = "hybrid", feature = "fullhash")))]
+fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
+    HashMapStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+/// Load the store from a DataSource (file or URL).
+///
+/// Also returns the source metadata for conditional reloading.
+///
+/// # Example
+///
+/// ```ignore
+/// use occlusion::{load_from_source, DataSource};
+///
+/// let source = DataSource::parse("data.csv");
+/// let (store, metadata) = load_from_source(&source)?;
+/// ```
+pub fn load_from_source(source: &DataSource) -> Result<(ActiveStore, SourceMetadata)> {
+    match source {
+        DataSource::File(path) => {
+            let metadata =
+                SourceMetadata::from_file(path).map_err(|e| StoreError::IoError(e.to_string()))?;
+            let entries = load_entries(path)?;
+            let store = build_store(entries)?;
+            Ok((store, metadata))
+        }
+        #[cfg(feature = "url")]
+        DataSource::Url(url) => load_from_url(url),
+    }
+}
+
+/// Check if the source has changed since the given metadata.
+///
+/// For files, checks the modification time.
+/// For URLs, does a HEAD request to check ETag/Last-Modified.
+pub fn check_source_changed(source: &DataSource, old_metadata: &SourceMetadata) -> Result<bool> {
+    match source {
+        DataSource::File(path) => {
+            let new_metadata =
+                SourceMetadata::from_file(path).map_err(|e| StoreError::IoError(e.to_string()))?;
+            Ok(old_metadata.has_changed(&new_metadata))
+        }
+        #[cfg(feature = "url")]
+        DataSource::Url(url) => check_url_changed(url, old_metadata),
+    }
+}
+
+/// Extract metadata from HTTP response headers.
+#[cfg(feature = "url")]
+fn extract_metadata(response: &reqwest::blocking::Response) -> SourceMetadata {
+    SourceMetadata {
+        mtime: None,
+        etag: response
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+        last_modified: response
+            .headers()
+            .get("last-modified")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+    }
+}
+
+/// Load from a URL (only available with the "url" feature).
+#[cfg(feature = "url")]
+fn load_from_url(url: &str) -> Result<(ActiveStore, SourceMetadata)> {
+    let response = reqwest::blocking::get(url)
+        .map_err(|e| StoreError::IoError(format!("HTTP request failed: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(StoreError::IoError(format!(
+            "HTTP request failed with status: {}",
+            response.status()
+        )));
+    }
+
+    let metadata = extract_metadata(&response);
+
+    let text = response
+        .text()
+        .map_err(|e| StoreError::IoError(format!("Failed to read response body: {}", e)))?;
+
+    let entries = load_entries_from_reader(Cursor::new(text))?;
+    let store = build_store(entries)?;
+
+    Ok((store, metadata))
+}
+
+/// Check if a URL has changed using HEAD request.
+#[cfg(feature = "url")]
+fn check_url_changed(url: &str, old_metadata: &SourceMetadata) -> Result<bool> {
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .head(url)
+        .send()
+        .map_err(|e| StoreError::IoError(format!("HTTP HEAD request failed: {}", e)))?;
+
+    if !response.status().is_success() {
+        // If HEAD fails, assume changed
+        return Ok(true);
+    }
+
+    let new_metadata = extract_metadata(&response);
+    Ok(old_metadata.has_changed(&new_metadata))
 }
 
 // ============================================================================

@@ -4,13 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = []
+default = ["url"]
 # Use std HashMap instead of FxHash
 nofx = ["occlusion/nofx"]
 # Alternative store implementations
 vec = ["occlusion/vec"]
 hybrid = ["occlusion/hybrid"]
 fullhash = ["occlusion/fullhash"]
+# Enable URL loading
+url = ["occlusion/url"]
 
 [dependencies]
 occlusion = { path = "../lib" }

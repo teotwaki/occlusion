@@ -19,7 +19,7 @@
 //! - **HybridAuthStore** excels when 80-90% of UUIDs are at level 0
 //! - **FullHashStore** has best worst-case performance for mask=0 queries
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use occlusion::{FullHashStore, HashMapStore, HybridAuthStore, Store, VecStore};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -123,27 +123,19 @@ fn benchmark_skewed_distribution(c: &mut Criterion) {
     let higher_level_uuid = uuids[1_900_000];
 
     group.bench_function(BenchmarkId::new("vecstore", "higher_level_lookup"), |b| {
-        b.iter(|| {
-            black_box(vec_store.is_visible(black_box(&higher_level_uuid), black_box(7)))
-        })
+        b.iter(|| black_box(vec_store.is_visible(black_box(&higher_level_uuid), black_box(7))))
     });
 
     group.bench_function(BenchmarkId::new("hybrid", "higher_level_lookup"), |b| {
-        b.iter(|| {
-            black_box(hybrid_store.is_visible(black_box(&higher_level_uuid), black_box(7)))
-        })
+        b.iter(|| black_box(hybrid_store.is_visible(black_box(&higher_level_uuid), black_box(7))))
     });
 
     group.bench_function(BenchmarkId::new("fullhash", "higher_level_lookup"), |b| {
-        b.iter(|| {
-            black_box(fullhash_store.is_visible(black_box(&higher_level_uuid), black_box(7)))
-        })
+        b.iter(|| black_box(fullhash_store.is_visible(black_box(&higher_level_uuid), black_box(7))))
     });
 
     group.bench_function(BenchmarkId::new("hashmap", "higher_level_lookup"), |b| {
-        b.iter(|| {
-            black_box(hashmap_store.is_visible(black_box(&higher_level_uuid), black_box(7)))
-        })
+        b.iter(|| black_box(hashmap_store.is_visible(black_box(&higher_level_uuid), black_box(7))))
     });
 
     group.finish();

@@ -7,6 +7,9 @@ pub enum StoreError {
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
 
+    #[error("IO error: {0}")]
+    IoError(String),
+
     #[error("CSV parse error: {0}")]
     CsvError(#[from] csv::Error),
 

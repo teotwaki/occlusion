@@ -61,6 +61,7 @@
 
 mod error;
 mod loader;
+mod source;
 
 // Store modules - conditionally compiled based on features
 // HashMapStore is always available (default)
@@ -78,7 +79,8 @@ mod store_fullhash;
 
 // Re-exports
 pub use error::{Result, StoreError};
-pub use loader::load_from_csv;
+pub use loader::{check_source_changed, load_from_csv, load_from_source};
+pub use source::{DataSource, SourceMetadata};
 pub use store_hashmap::HashMapStore;
 
 // Bench-only exports for benchmark comparisons
@@ -136,3 +138,7 @@ pub type ActiveStore = VecStore;
 
 #[cfg(not(any(feature = "vec", feature = "hybrid", feature = "fullhash")))]
 pub type ActiveStore = HashMapStore;
+
+// Swappable store for runtime reloading
+mod swappable;
+pub use swappable::SwappableStore;
