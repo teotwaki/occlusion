@@ -5,21 +5,23 @@ edition = "2024"
 
 [features]
 default = []
-# Use std HashMap instead of FxHash (slower, but no extra dependency)
+# Use std HashMap instead of FxHash (slower, but resistant to DoS)
 nofx = []
+
 # Alternative store implementations (mutually exclusive in production)
 # Enable one to swap out the default HashMapStore
 vec = []
 hybrid = []
 fullhash = []
+
 # Enable all stores for benchmarking comparisons
 bench = []
 
 [dependencies]
 rustc-hash = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true }
 thiserror = { workspace = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
 criterion = "0.8"
