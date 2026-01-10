@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[cfg(feature = "fx-hash")]
+use rustc_hash::FxHashMap as HashMap;
+
+#[cfg(not(feature = "fx-hash"))]
+use std::collections::HashMap;
+
 /// Sorted vector authorization store containing UUID-visibility mappings.
 ///
 /// UUIDs are stored in a sorted vector for O(log n) binary search lookups.
@@ -114,8 +120,8 @@ impl VecStore {
     /// Calculate visibility distribution statistics.
     ///
     /// Returns a map from visibility level to count of UUIDs at that level.
-    fn visibility_distribution_impl(&self) -> std::collections::HashMap<u8, usize> {
-        let mut dist = std::collections::HashMap::new();
+    fn visibility_distribution_impl(&self) -> HashMap<u8, usize> {
+        let mut dist: HashMap<_, _> = Default::default();
         for (_, level) in &self.entries {
             *dist.entry(*level).or_insert(0) += 1;
         }
@@ -159,7 +165,7 @@ impl crate::Store for VecStore {
         self.entries.is_empty()
     }
 
-    fn visibility_distribution(&self) -> std::collections::HashMap<u8, usize> {
+    fn visibility_distribution(&self) -> HashMap<u8, usize> {
         self.visibility_distribution_impl()
     }
 }

@@ -1,4 +1,9 @@
+#[cfg(feature = "fx-hash")]
+use rustc_hash::FxHashMap as HashMap;
+
+#[cfg(not(feature = "fx-hash"))]
 use std::collections::HashMap;
+
 use uuid::Uuid;
 
 /// Pure HashMap-based authorization store (RECOMMENDED DEFAULT).
@@ -33,6 +38,10 @@ impl HashMapStore {
     ///
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
+        #[cfg(feature = "fx-hash")]
+        let mut map = HashMap::with_capacity_and_hasher(entries.len(), Default::default());
+
+        #[cfg(not(feature = "fx-hash"))]
         let mut map = HashMap::with_capacity(entries.len());
 
         for (uuid, level) in entries {
@@ -48,10 +57,12 @@ impl HashMapStore {
     ///
     /// Returns a map from visibility level to count of UUIDs at that level.
     fn visibility_distribution_impl(&self) -> HashMap<u8, usize> {
-        let mut dist = HashMap::new();
+        let mut dist = HashMap::default();
+
         for level in self.map.values() {
             *dist.entry(*level).or_insert(0) += 1;
         }
+
         dist
     }
 }

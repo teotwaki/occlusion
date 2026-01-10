@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+
+#[cfg(feature = "fx-hash")]
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+
+#[cfg(not(feature = "fx-hash"))]
+use std::collections::{HashMap, HashSet};
+
 use uuid::Uuid;
 
 /// Hybrid authorization store optimized for skewed distributions.
@@ -36,7 +42,7 @@ impl HybridAuthStore {
     /// Entries at visibility level 0 go into a HashSet, others into a sorted array.
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
-        let mut level_0 = HashSet::new();
+        let mut level_0: HashSet<_> = Default::default();
         let mut higher_levels = Vec::new();
 
         // Partition by visibility level
@@ -162,15 +168,13 @@ impl HybridAuthStore {
     /// Calculate visibility distribution statistics.
     ///
     /// Returns a map from visibility level to count of UUIDs at that level.
-    fn visibility_distribution_impl(&self) -> std::collections::HashMap<u8, usize> {
-        let mut dist = std::collections::HashMap::new();
+    fn visibility_distribution_impl(&self) -> HashMap<u8, usize> {
+        let mut dist: HashMap<_, _> = Default::default();
 
-        // Count level 0
         if !self.level_0.is_empty() {
             dist.insert(0, self.level_0.len());
         }
 
-        // Count higher levels
         for (_, level) in &self.higher_levels {
             *dist.entry(*level).or_insert(0) += 1;
         }
@@ -274,7 +278,7 @@ impl crate::Store for HybridAuthStore {
         self.level_0.is_empty() && self.higher_levels.is_empty()
     }
 
-    fn visibility_distribution(&self) -> std::collections::HashMap<u8, usize> {
+    fn visibility_distribution(&self) -> HashMap<u8, usize> {
         self.visibility_distribution_impl()
     }
 }

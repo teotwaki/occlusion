@@ -99,10 +99,15 @@ pub use loader::{
 };
 pub use store_fullhash::FullHashStore;
 pub use store_hashmap::HashMapStore;
-pub use store_hybrid::{HybridAuthStore, DistributionStats};
+pub use store_hybrid::{DistributionStats, HybridAuthStore};
 pub use store_vecstore::VecStore;
 
+#[cfg(feature = "fx-hash")]
+use rustc_hash::FxHashMap as HashMap;
+
+#[cfg(not(feature = "fx-hash"))]
 use std::collections::HashMap;
+
 use uuid::Uuid;
 
 /// Common trait for all store implementations.
@@ -116,4 +121,3 @@ pub trait Store: Send + Sync {
     fn is_empty(&self) -> bool;
     fn visibility_distribution(&self) -> HashMap<u8, usize>;
 }
-

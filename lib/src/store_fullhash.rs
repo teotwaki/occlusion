@@ -1,4 +1,9 @@
-use std::collections::HashSet;
+#[cfg(feature = "fx-hash")]
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+
+#[cfg(not(feature = "fx-hash"))]
+use std::collections::{HashMap, HashSet};
+
 use uuid::Uuid;
 
 /// Full hash-based authorization store using one HashSet per visibility level.
@@ -30,8 +35,9 @@ impl FullHashStore {
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
         // Initialize 256 empty HashSets
-        let mut by_level: [HashSet<Uuid>; 256] = std::array::from_fn(|_| HashSet::new());
-        let mut all_uuids = HashSet::new();
+        let mut by_level: [HashSet<Uuid>; 256] = std::array::from_fn(|_| Default::default());
+
+        let mut all_uuids: HashSet<_> = Default::default();
 
         // Insert each UUID into its corresponding level's HashSet
         for (uuid, level) in entries {
@@ -122,13 +128,15 @@ impl FullHashStore {
     /// Calculate visibility distribution statistics.
     ///
     /// Returns a map from visibility level to count of UUIDs at that level.
-    fn visibility_distribution_impl(&self) -> std::collections::HashMap<u8, usize> {
-        let mut dist = std::collections::HashMap::new();
+    fn visibility_distribution_impl(&self) -> HashMap<u8, usize> {
+        let mut dist: HashMap<_, _> = Default::default();
+
         for (level, set) in self.by_level.iter().enumerate() {
             if !set.is_empty() {
                 dist.insert(level as u8, set.len());
             }
         }
+
         dist
     }
 
@@ -164,10 +172,7 @@ impl std::fmt::Display for DistributionStats {
         write!(
             f,
             "Total: {}, Level 0: {} ({:.1}%), Higher: {}",
-            self.total_uuids,
-            self.level_0_count,
-            self.level_0_percentage,
-            self.higher_levels_count
+            self.total_uuids, self.level_0_count, self.level_0_percentage, self.higher_levels_count
         )
     }
 }
@@ -217,7 +222,7 @@ impl crate::Store for FullHashStore {
         self.by_level.iter().all(|set| set.is_empty())
     }
 
-    fn visibility_distribution(&self) -> std::collections::HashMap<u8, usize> {
+    fn visibility_distribution(&self) -> HashMap<u8, usize> {
         self.visibility_distribution_impl()
     }
 }
@@ -292,10 +297,10 @@ mod tests {
         let entries = vec![(uuid, 8)];
         let store = FullHashStore::new(entries).unwrap();
 
-        assert_eq!(store.is_visible(&uuid, 10), true);  // 8 <= 10
-        assert_eq!(store.is_visible(&uuid, 8), true);   // 8 <= 8
-        assert_eq!(store.is_visible(&uuid, 7), false);  // 8 > 7
-        assert_eq!(store.is_visible(&uuid, 0), false);  // 8 > 0
+        assert_eq!(store.is_visible(&uuid, 10), true); // 8 <= 10
+        assert_eq!(store.is_visible(&uuid, 8), true); // 8 <= 8
+        assert_eq!(store.is_visible(&uuid, 7), false); // 8 > 7
+        assert_eq!(store.is_visible(&uuid, 0), false); // 8 > 0
     }
 
     #[test]

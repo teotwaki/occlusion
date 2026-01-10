@@ -3,17 +3,22 @@ name = "occlusion"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+fx-hash = ["dep:rustc-hash"]
+
 [dependencies]
-uuid = { workspace = true, features = ["v4", "serde"] }
-serde = { workspace = true, features = ["derive"] }
 csv = "1.4.0"
+rustc-hash = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
 
 [dev-dependencies]
 criterion = "0.8"
-tempfile = "3.24.0"
 rand = "0.9"
 rand_chacha = "0.9"
+tempfile = "3.24.0"
 
 [[bench]]
 name = "store_bench"
