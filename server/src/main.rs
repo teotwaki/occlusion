@@ -4,11 +4,11 @@ extern crate rocket;
 use clap::Parser;
 use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;
+use server::ReloadState;
 use server::error::Result;
 use server::loader::{load_from_source, reload_if_changed};
 use server::routes;
 use server::source::{DataSource, SourceMetadata};
-use server::ReloadState;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tracing::{error, info};
@@ -138,7 +138,6 @@ async fn rocket() -> _ {
 
     rocket::custom(figment)
         .manage(store)
-        .manage(reload_state)
         .mount(
             "/",
             routes![
@@ -151,8 +150,6 @@ async fn rocket() -> _ {
                 routes::opa_visible,
                 routes::opa_visible_batch,
                 routes::opa_level,
-                // Admin API
-                routes::reload,
             ],
         )
 }

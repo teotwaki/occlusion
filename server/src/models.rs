@@ -78,15 +78,3 @@ pub struct OpaBatchVisibleInput {
 pub struct OpaLevelInput {
     pub object: Uuid,
 }
-
-// ============================================================================
-// Admin Models
-// ============================================================================
-
-/// Response for reload endpoint
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ReloadResponse {
-    pub success: bool,
-    pub uuid_count: usize,
-    pub message: String,
-}

@@ -6,12 +6,10 @@ use rocket::http::{ContentType, Status};
 use rocket::local::blocking::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fs;
 use std::io::Write;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 
-// Import types we need for deserialization
 #[derive(Debug, Deserialize)]
 struct HealthResponse {
     status: String,
@@ -20,6 +18,7 @@ struct HealthResponse {
 
 #[derive(Debug, Deserialize)]
 struct CheckResponse {
+    #[allow(dead_code)]
     object: Uuid,
     is_visible: bool,
 }
@@ -32,19 +31,13 @@ struct BatchCheckResponse {
 #[derive(Debug, Deserialize)]
 struct StatsResponse {
     total_uuids: usize,
+    #[allow(dead_code)]
     visibility_distribution: HashMap<u8, usize>,
 }
 
 #[derive(Debug, Deserialize)]
 struct OpaResponse<T> {
     result: T,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReloadResponse {
-    success: bool,
-    uuid_count: usize,
-    message: String,
 }
 
 /// Create a test CSV file with the given entries.
@@ -61,39 +54,28 @@ fn create_test_csv(entries: &[(Uuid, u8)]) -> NamedTempFile {
 /// Build a test rocket instance from a CSV file path.
 fn build_test_rocket(csv_path: &str) -> rocket::Rocket<rocket::Build> {
     use occlusion::SwappableStore;
-    use std::sync::{Arc, RwLock};
 
-    // Parse the data source
     let source = server::source::DataSource::parse(csv_path);
 
-    // Load the store synchronously for testing
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let (store, metadata) = rt
+    let (store, _metadata) = rt
         .block_on(server::loader::load_from_source(&source))
         .expect("Failed to load store");
 
     let swappable = SwappableStore::new(store);
-    let reload_state = Arc::new(server::ReloadState {
-        source: source.clone(),
-        metadata: RwLock::new(metadata),
-    });
 
-    rocket::build()
-        .manage(swappable)
-        .manage(reload_state)
-        .mount(
-            "/",
-            rocket::routes![
-                server::routes::check,
-                server::routes::check_batch,
-                server::routes::health,
-                server::routes::stats,
-                server::routes::opa_visible,
-                server::routes::opa_visible_batch,
-                server::routes::opa_level,
-                server::routes::reload,
-            ],
-        )
+    rocket::build().manage(swappable).mount(
+        "/",
+        rocket::routes![
+            server::routes::check,
+            server::routes::check_batch,
+            server::routes::health,
+            server::routes::stats,
+            server::routes::opa_visible,
+            server::routes::opa_visible_batch,
+            server::routes::opa_level,
+        ],
+    )
 }
 
 #[test]
@@ -198,45 +180,6 @@ fn test_opa_endpoints_with_csv_file() {
     let body: OpaResponse<HashMap<Uuid, bool>> = response.into_json().unwrap();
     assert_eq!(body.result.get(&uuid1), Some(&true));
     assert_eq!(body.result.get(&uuid2), Some(&false));
-}
-
-#[test]
-fn test_reload_endpoint() {
-    let uuid1 = Uuid::from_u128(1);
-    let entries = vec![(uuid1, 5)];
-
-    // Create initial CSV file
-    let csv_file = create_test_csv(&entries);
-    let csv_path = csv_file.path().to_str().unwrap().to_string();
-
-    let rocket = build_test_rocket(&csv_path);
-    let client = Client::tracked(rocket).expect("valid rocket instance");
-
-    // Verify initial state
-    let response = client.get("/health").dispatch();
-    let body: HealthResponse = response.into_json().unwrap();
-    assert_eq!(body.uuid_count, 1);
-
-    // Update the CSV file with new data
-    let uuid2 = Uuid::from_u128(2);
-    let uuid3 = Uuid::from_u128(3);
-    fs::write(
-        &csv_path,
-        format!("uuid,visibility_level\n{},0\n{},5\n{},10\n", uuid1, uuid2, uuid3),
-    )
-    .expect("Failed to update CSV");
-
-    // Trigger reload
-    let response = client.post("/api/v1/admin/reload").dispatch();
-    assert_eq!(response.status(), Status::Ok);
-    let body: ReloadResponse = response.into_json().unwrap();
-    assert!(body.success);
-    assert_eq!(body.uuid_count, 3);
-
-    // Verify new state
-    let response = client.get("/health").dispatch();
-    let body: HealthResponse = response.into_json().unwrap();
-    assert_eq!(body.uuid_count, 3);
 }
 
 #[test]

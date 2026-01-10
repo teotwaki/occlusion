@@ -1,11 +1,8 @@
-use crate::loader::load_from_source;
 use crate::models::*;
-use crate::ReloadState;
 use occlusion::{Store, SwappableStore};
-use rocket::serde::json::Json;
 use rocket::State;
+use rocket::serde::json::Json;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Check if a single object is visible under the given visibility mask
 ///
@@ -122,44 +119,6 @@ pub fn opa_level(
 ) -> Json<OpaResponse<Option<u8>>> {
     let level = store.get_visibility(&request.input.object);
     Json(OpaResponse { result: level })
-}
-
-// ============================================================================
-// Admin Endpoints
-// ============================================================================
-
-/// Trigger a manual reload of the data source
-///
-/// POST /api/v1/admin/reload
-///
-/// Forces an immediate reload of the data from the configured source,
-/// regardless of whether the source has changed.
-#[post("/api/v1/admin/reload")]
-pub async fn reload(
-    store: &State<SwappableStore>,
-    reload_state: &State<Arc<ReloadState>>,
-) -> Json<ReloadResponse> {
-    match load_from_source(&reload_state.source).await {
-        Ok((new_store, new_metadata)) => {
-            let count = new_store.len();
-            store.swap(new_store);
-
-            // Update metadata
-            let mut metadata = reload_state.metadata.write().expect("RwLock poisoned");
-            *metadata = new_metadata;
-
-            Json(ReloadResponse {
-                success: true,
-                uuid_count: count,
-                message: "Store reloaded successfully".to_string(),
-            })
-        }
-        Err(e) => Json(ReloadResponse {
-            success: false,
-            uuid_count: store.len(),
-            message: format!("Reload failed: {}", e),
-        }),
-    }
 }
 
 #[cfg(test)]
