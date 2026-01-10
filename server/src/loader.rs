@@ -43,9 +43,6 @@ fn load_entries_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<(Uuid, u8)>> {
 }
 
 /// Load the store from a DataSource (file or URL) asynchronously.
-///
-/// For file sources, this performs synchronous file I/O.
-/// For URL sources, this uses async HTTP requests.
 pub async fn load_from_source(source: &DataSource) -> Result<(ActiveStore, SourceMetadata)> {
     match source {
         DataSource::File(path) => {
@@ -54,24 +51,29 @@ pub async fn load_from_source(source: &DataSource) -> Result<(ActiveStore, Sourc
             let store = occlusion::build_store(entries)?;
             Ok((store, metadata))
         }
-        DataSource::Url(url) => load_from_url(url).await,
+        DataSource::Url(url) => load_from_url(url, None).await.map(|r| r.unwrap()),
     }
 }
 
-/// Check if the source has changed since the given metadata.
+/// Conditionally reload from a DataSource if it has changed.
 ///
-/// For files, checks the modification time (synchronous).
-/// For URLs, does an async HEAD request to check ETag/Last-Modified.
-pub async fn check_source_changed(
+/// Returns `Ok(None)` if the source hasn't changed (304 Not Modified for URLs,
+/// or same mtime for files). Returns `Ok(Some(...))` with new data if changed.
+pub async fn reload_if_changed(
     source: &DataSource,
     old_metadata: &SourceMetadata,
-) -> Result<bool> {
+) -> Result<Option<(ActiveStore, SourceMetadata)>> {
     match source {
         DataSource::File(path) => {
             let new_metadata = SourceMetadata::from_file(path)?;
-            Ok(old_metadata.has_changed(&new_metadata))
+            if !old_metadata.has_changed(&new_metadata) {
+                return Ok(None);
+            }
+            let entries = load_entries_from_file(path)?;
+            let store = occlusion::build_store(entries)?;
+            Ok(Some((store, new_metadata)))
         }
-        DataSource::Url(url) => check_url_changed(url, old_metadata).await,
+        DataSource::Url(url) => load_from_url(url, Some(old_metadata)).await,
     }
 }
 
@@ -90,9 +92,31 @@ fn extract_metadata_from_headers(headers: &reqwest::header::HeaderMap) -> Source
     }
 }
 
-/// Load from a URL asynchronously.
-async fn load_from_url(url: &str) -> Result<(ActiveStore, SourceMetadata)> {
-    let response = reqwest::get(url).await?;
+/// Load from a URL, optionally with conditional headers.
+///
+/// If `old_metadata` is provided, adds If-None-Match and If-Modified-Since headers.
+/// Returns `Ok(None)` on 304 Not Modified, `Ok(Some(...))` on success.
+async fn load_from_url(
+    url: &str,
+    old_metadata: Option<&SourceMetadata>,
+) -> Result<Option<(ActiveStore, SourceMetadata)>> {
+    let client = reqwest::Client::new();
+    let mut request = client.get(url);
+
+    if let Some(meta) = old_metadata {
+        if let Some(etag) = &meta.etag {
+            request = request.header("If-None-Match", etag);
+        }
+        if let Some(last_modified) = &meta.last_modified {
+            request = request.header("If-Modified-Since", last_modified);
+        }
+    }
+
+    let response = request.send().await?;
+
+    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+        return Ok(None);
+    }
 
     if !response.status().is_success() {
         return Err(LoadError::HttpError(format!(
@@ -102,24 +126,9 @@ async fn load_from_url(url: &str) -> Result<(ActiveStore, SourceMetadata)> {
     }
 
     let metadata = extract_metadata_from_headers(response.headers());
-
     let text = response.text().await?;
-
     let entries = load_entries_from_reader(Cursor::new(text))?;
     let store = occlusion::build_store(entries)?;
 
-    Ok((store, metadata))
-}
-
-/// Check if a URL has changed using HEAD request (async version).
-async fn check_url_changed(url: &str, old_metadata: &SourceMetadata) -> Result<bool> {
-    let client = reqwest::Client::new();
-    let response = client.head(url).send().await?;
-
-    if !response.status().is_success() {
-        return Ok(true);
-    }
-
-    let new_metadata = extract_metadata_from_headers(response.headers());
-    Ok(old_metadata.has_changed(&new_metadata))
+    Ok(Some((store, metadata)))
 }

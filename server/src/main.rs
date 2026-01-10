@@ -9,13 +9,13 @@ mod source;
 
 use clap::Parser;
 use error::Result;
-use loader::{check_source_changed, load_from_source};
+use loader::{load_from_source, reload_if_changed};
 use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;
 use source::{DataSource, SourceMetadata};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// High-performance authorization server for UUID visibility lookups
@@ -76,29 +76,13 @@ fn spawn_reload_scheduler(
 
             info!(source = %reload_state.source, "Checking for data source changes");
 
-            // Clone to avoid holding lock across await
             let old_metadata = {
                 let metadata = reload_state.metadata.read().expect("RwLock poisoned");
                 metadata.clone()
             };
-            let should_reload =
-                match check_source_changed(&reload_state.source, &old_metadata).await {
-                    Ok(changed) => changed,
-                    Err(e) => {
-                        warn!(error = %e, "Failed to check source changes, will attempt reload");
-                        true
-                    }
-                };
 
-            if !should_reload {
-                info!("Source unchanged, skipping reload");
-                continue;
-            }
-
-            info!("Source changed, reloading store");
-
-            match load_from_source(&reload_state.source).await {
-                Ok((new_store, new_metadata)) => {
+            match reload_if_changed(&reload_state.source, &old_metadata).await {
+                Ok(Some((new_store, new_metadata))) => {
                     let count = new_store.len();
                     store.swap(new_store);
 
@@ -106,6 +90,9 @@ fn spawn_reload_scheduler(
                     *metadata = new_metadata;
 
                     info!(uuid_count = count, "Store reloaded successfully");
+                }
+                Ok(None) => {
+                    info!("Source unchanged, skipping reload");
                 }
                 Err(e) => {
                     error!(error = %e, "Failed to reload store, keeping existing data");
