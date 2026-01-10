@@ -47,3 +47,39 @@ pub struct StatsResponse {
     pub total_uuids: usize,
     pub visibility_distribution: HashMap<u8, usize>,
 }
+
+// ============================================================================
+// OPA-Compatible Models
+// ============================================================================
+
+/// OPA-style request wrapper with input field
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpaRequest<T> {
+    pub input: T,
+}
+
+/// OPA-style response wrapper with result field
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpaResponse<T> {
+    pub result: T,
+}
+
+/// Input for OPA visible check
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpaVisibleInput {
+    pub object: Uuid,
+    pub visibility_mask: u8,
+}
+
+/// Input for OPA batch visible check
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpaBatchVisibleInput {
+    pub objects: Vec<Uuid>,
+    pub visibility_mask: u8,
+}
+
+/// Input for OPA level query
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpaLevelInput {
+    pub object: Uuid,
+}

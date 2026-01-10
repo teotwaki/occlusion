@@ -65,10 +65,15 @@ fn rocket() -> _ {
     rocket::build().manage(store).mount(
         "/",
         routes![
+            // Original API
             routes::check,
             routes::check_batch,
             routes::health,
             routes::stats,
+            // OPA-compatible API
+            routes::opa_visible,
+            routes::opa_visible_batch,
+            routes::opa_level,
         ],
     )
 }
