@@ -1,62 +1,61 @@
-use crate::{HashMap, HashSet, Store};
+use crate::{HashMap, HashSet};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 /// Full hash-based authorization store using one HashSet per visibility level.
 ///
-/// Uses 256 HashSets (one per visibility level 0-255) for O(1) lookups with early exit.
-/// This trades memory for optimized worst-case performance (e.g., mask=0 queries).
+/// Uses a sparse BTreeMap of HashSets, only allocating for levels that have entries.
+/// Provides O(1) lookups per level with early exit on `is_visible`.
 ///
 /// ## When to Use
-/// - Need to optimize worst-case scenarios (mask=0 queries: ~11ns)
+/// - Need to optimize worst-case scenarios (mask=0 queries)
 /// - Want guaranteed O(1) lookups regardless of distribution
-/// - Memory is not a constraint
+/// - Data uses a small subset of the 256 possible visibility levels
 ///
 /// ## Performance (2M UUIDs, with FxHash)
 /// - Level 0 lookup: ~2.3ns
 /// - Higher level lookup: ~21ns (checks multiple levels with early exit)
 /// - Worst case (mask=0): ~6.2ns (best of all implementations)
 /// - Batch (100): ~422ns
-/// - Memory: Highest overhead (256 HashSets)
 #[derive(Debug, Clone)]
 pub struct FullHashStore {
-    /// One HashSet per visibility level (0-255)
-    by_level: [HashSet<Uuid>; 256],
+    /// Sparse map of visibility level -> UUIDs at that level
+    by_level: BTreeMap<u8, HashSet<Uuid>>,
+    /// Total count of UUIDs
+    total: usize,
 }
 
 impl FullHashStore {
     /// Create a new FullHashStore from a vector of (UUID, visibility) pairs.
     ///
     /// Each UUID is placed in the HashSet corresponding to its visibility level.
+    /// Only levels with entries are allocated.
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
-        // Initialize 256 empty HashSets
-        let mut by_level: [HashSet<Uuid>; 256] = std::array::from_fn(|_| Default::default());
+        let mut by_level: BTreeMap<u8, HashSet<Uuid>> = BTreeMap::new();
+        let mut all_uuids: HashSet<Uuid> = Default::default();
 
-        let mut all_uuids: HashSet<_> = Default::default();
-
-        // Insert each UUID into its corresponding level's HashSet
         for (uuid, level) in entries {
-            // Check for duplicates across all levels
             if !all_uuids.insert(uuid) {
                 return Err(format!("Duplicate UUID found: {}", uuid));
             }
-            by_level[level as usize].insert(uuid);
+            by_level.entry(level).or_default().insert(uuid);
         }
 
-        Ok(Self { by_level })
+        let total = all_uuids.len();
+        Ok(Self { by_level, total })
     }
 
     /// Returns statistics about the store distribution.
     pub fn distribution_stats(&self) -> DistributionStats {
-        let total = self.len();
-        let level_0_count = self.by_level[0].len();
+        let level_0_count = self.by_level.get(&0).map_or(0, |s| s.len());
 
         DistributionStats {
-            total_uuids: total,
+            total_uuids: self.total,
             level_0_count,
-            higher_levels_count: total - level_0_count,
-            level_0_percentage: if total > 0 {
-                (level_0_count as f64 / total as f64) * 100.0
+            higher_levels_count: self.total - level_0_count,
+            level_0_percentage: if self.total > 0 {
+                (level_0_count as f64 / self.total as f64) * 100.0
             } else {
                 0.0
             },
@@ -90,25 +89,16 @@ unsafe impl Sync for FullHashStore {}
 impl crate::Store for FullHashStore {
     #[inline]
     fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
-        // Search through levels 0-255 until we find the UUID
-        for (level, set) in self.by_level.iter().enumerate() {
-            if set.contains(uuid) {
-                return Some(level as u8);
-            }
-        }
-        None
+        self.by_level
+            .iter()
+            .find_map(|(&level, set)| set.contains(uuid).then_some(level))
     }
 
     #[inline]
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
-        // Only check levels 0 through mask (inclusive)
-        // Early exit as soon as we find the UUID
-        for level in 0..=mask {
-            if self.by_level[level as usize].contains(uuid) {
-                return true;
-            }
-        }
-        false
+        self.by_level
+            .range(..=mask)
+            .any(|(_, set)| set.contains(uuid))
     }
 
     fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
@@ -120,30 +110,26 @@ impl crate::Store for FullHashStore {
 
     #[inline]
     fn len(&self) -> usize {
-        self.by_level.iter().map(|set| set.len()).sum()
+        self.total
     }
 
     #[inline]
     fn is_empty(&self) -> bool {
-        self.by_level.iter().all(|set| set.is_empty())
+        self.total == 0
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        let mut dist: HashMap<_, _> = Default::default();
-
-        for (level, set) in self.by_level.iter().enumerate() {
-            if !set.is_empty() {
-                dist.insert(level as u8, set.len());
-            }
-        }
-
-        dist
+        self.by_level
+            .iter()
+            .map(|(&level, set)| (level, set.len()))
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Store;
 
     fn uuid_from_u128(n: u128) -> Uuid {
         Uuid::from_u128(n)
@@ -159,9 +145,10 @@ mod tests {
         ];
         let store = FullHashStore::new(entries).unwrap();
 
-        assert_eq!(store.by_level[0].len(), 2);
-        assert_eq!(store.by_level[5].len(), 1);
-        assert_eq!(store.by_level[10].len(), 1);
+        assert_eq!(store.by_level.get(&0).unwrap().len(), 2);
+        assert_eq!(store.by_level.get(&5).unwrap().len(), 1);
+        assert_eq!(store.by_level.get(&10).unwrap().len(), 1);
+        assert_eq!(store.by_level.len(), 3); // Only 3 levels allocated
     }
 
     #[test]

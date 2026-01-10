@@ -29,14 +29,10 @@ impl VecStore {
     /// The entries will be sorted by UUID for efficient binary search.
     /// Duplicates will cause an error to be returned.
     pub fn new(mut entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
-        // Sort by UUID
         entries.sort_unstable_by_key(|(uuid, _)| *uuid);
 
-        // Check for duplicates
-        for window in entries.windows(2) {
-            if window[0].0 == window[1].0 {
-                return Err(format!("Duplicate UUID found: {}", window[0].0));
-            }
+        if let Some(dup) = entries.windows(2).find(|w| w[0].0 == w[1].0) {
+            return Err(format!("Duplicate UUID found: {}", dup[0].0));
         }
 
         Ok(Self { entries })
@@ -80,13 +76,10 @@ impl crate::Store for VecStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        let mut dist: HashMap<_, _> = Default::default();
-
-        for (_, level) in &self.entries {
-            *dist.entry(*level).or_insert(0) += 1;
-        }
-
-        dist
+        self.entries.iter().fold(HashMap::default(), |mut acc, (_, level)| {
+            *acc.entry(*level).or_insert(0) += 1;
+            acc
+        })
     }
 }
 

@@ -50,21 +50,14 @@ impl HybridAuthStore {
             }
         }
 
-        // Sort higher levels by UUID for binary search
         higher_levels.sort_unstable_by_key(|(uuid, _)| *uuid);
 
-        // Check for duplicates in higher levels
-        for window in higher_levels.windows(2) {
-            if window[0].0 == window[1].0 {
-                return Err(format!("Duplicate UUID found: {}", window[0].0));
-            }
+        if let Some(dup) = higher_levels.windows(2).find(|w| w[0].0 == w[1].0) {
+            return Err(format!("Duplicate UUID found: {}", dup[0].0));
         }
 
-        // Check for UUIDs that appear in both level_0 and higher_levels
-        for (uuid, _) in &higher_levels {
-            if level_0.contains(uuid) {
-                return Err(format!("Duplicate UUID found: {}", uuid));
-            }
+        if let Some((uuid, _)) = higher_levels.iter().find(|(uuid, _)| level_0.contains(uuid)) {
+            return Err(format!("Duplicate UUID found: {}", uuid));
         }
 
         Ok(Self {
@@ -170,16 +163,13 @@ impl crate::Store for HybridAuthStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        let mut dist: HashMap<_, _> = Default::default();
-
+        let mut dist = self.higher_levels.iter().fold(HashMap::default(), |mut acc, (_, level)| {
+            *acc.entry(*level).or_insert(0) += 1;
+            acc
+        });
         if !self.level_0.is_empty() {
             dist.insert(0, self.level_0.len());
         }
-
-        for (_, level) in &self.higher_levels {
-            *dist.entry(*level).or_insert(0) += 1;
-        }
-
         dist
     }
 }
