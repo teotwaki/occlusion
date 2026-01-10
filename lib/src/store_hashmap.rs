@@ -1,4 +1,4 @@
-use crate::HashMap;
+use crate::{HashMap, StoreError};
 use uuid::Uuid;
 
 /// Pure HashMap-based authorization store (RECOMMENDED DEFAULT).
@@ -32,7 +32,7 @@ impl HashMapStore {
     /// Create a new HashMapStore from a vector of (UUID, visibility) pairs.
     ///
     /// Duplicates will cause an error to be returned.
-    pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
+    pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
         #[cfg(not(feature = "nofx"))]
         let mut map = HashMap::with_capacity_and_hasher(entries.len(), Default::default());
 
@@ -41,17 +41,13 @@ impl HashMapStore {
 
         for (uuid, level) in entries {
             if map.insert(uuid, level).is_some() {
-                return Err(format!("Duplicate UUID found: {}", uuid));
+                return Err(StoreError::DuplicateUuid(uuid));
             }
         }
 
         Ok(Self { map })
     }
 }
-
-// HashMapStore is immutable after construction, so it's safe to share across threads
-unsafe impl Send for HashMapStore {}
-unsafe impl Sync for HashMapStore {}
 
 impl crate::Store for HashMapStore {
     #[inline]

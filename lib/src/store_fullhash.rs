@@ -1,4 +1,4 @@
-use crate::{HashMap, HashSet};
+use crate::{HashMap, HashSet, StoreError};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
@@ -31,13 +31,13 @@ impl FullHashStore {
     /// Each UUID is placed in the HashSet corresponding to its visibility level.
     /// Only levels with entries are allocated.
     /// Duplicates will cause an error to be returned.
-    pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
+    pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
         let mut by_level: BTreeMap<u8, HashSet<Uuid>> = BTreeMap::new();
         let mut all_uuids: HashSet<Uuid> = Default::default();
 
         for (uuid, level) in entries {
             if !all_uuids.insert(uuid) {
-                return Err(format!("Duplicate UUID found: {}", uuid));
+                return Err(StoreError::DuplicateUuid(uuid));
             }
             by_level.entry(level).or_default().insert(uuid);
         }
@@ -81,10 +81,6 @@ impl std::fmt::Display for DistributionStats {
         )
     }
 }
-
-// FullHashStore is immutable after construction, so it's safe to share across threads
-unsafe impl Send for FullHashStore {}
-unsafe impl Sync for FullHashStore {}
 
 impl crate::Store for FullHashStore {
     #[inline]

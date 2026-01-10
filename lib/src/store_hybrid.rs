@@ -1,4 +1,4 @@
-use crate::{HashMap, HashSet, Store};
+use crate::{HashMap, HashSet, Store, StoreError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -35,7 +35,7 @@ impl HybridAuthStore {
     ///
     /// Entries at visibility level 0 go into a HashSet, others into a sorted array.
     /// Duplicates will cause an error to be returned.
-    pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
+    pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
         let mut level_0: HashSet<_> = Default::default();
         let mut higher_levels = Vec::new();
 
@@ -43,7 +43,7 @@ impl HybridAuthStore {
         for (uuid, level) in entries {
             if level == 0 {
                 if !level_0.insert(uuid) {
-                    return Err(format!("Duplicate UUID found: {}", uuid));
+                    return Err(StoreError::DuplicateUuid(uuid));
                 }
             } else {
                 higher_levels.push((uuid, level));
@@ -53,11 +53,11 @@ impl HybridAuthStore {
         higher_levels.sort_unstable_by_key(|(uuid, _)| *uuid);
 
         if let Some(dup) = higher_levels.windows(2).find(|w| w[0].0 == w[1].0) {
-            return Err(format!("Duplicate UUID found: {}", dup[0].0));
+            return Err(StoreError::DuplicateUuid(dup[0].0));
         }
 
         if let Some((uuid, _)) = higher_levels.iter().find(|(uuid, _)| level_0.contains(uuid)) {
-            return Err(format!("Duplicate UUID found: {}", uuid));
+            return Err(StoreError::DuplicateUuid(*uuid));
         }
 
         Ok(Self {
@@ -104,10 +104,6 @@ impl std::fmt::Display for DistributionStats {
         )
     }
 }
-
-// HybridAuthStore is immutable after construction, so it's safe to share across threads
-unsafe impl Send for HybridAuthStore {}
-unsafe impl Sync for HybridAuthStore {}
 
 impl crate::Store for HybridAuthStore {
     #[inline]

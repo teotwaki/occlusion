@@ -1,18 +1,14 @@
 #[macro_use]
 extern crate rocket;
 
-mod error;
-mod loader;
-mod models;
-mod routes;
-mod source;
-
 use clap::Parser;
-use error::Result;
-use loader::{load_from_source, reload_if_changed};
 use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;
-use source::{DataSource, SourceMetadata};
+use server::error::Result;
+use server::loader::{load_from_source, reload_if_changed};
+use server::routes;
+use server::source::{DataSource, SourceMetadata};
+use server::ReloadState;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tracing::{error, info};
@@ -34,12 +30,6 @@ struct Args {
     /// Output logs as JSON
     #[arg(long, env = "OCCLUSION_JSON_LOGS")]
     json_logs: bool,
-}
-
-/// Shared state for the reload scheduler
-pub struct ReloadState {
-    pub source: DataSource,
-    pub metadata: RwLock<SourceMetadata>,
 }
 
 /// Initialize tracing subscriber for structured logging

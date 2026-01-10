@@ -51,7 +51,11 @@ pub async fn load_from_source(source: &DataSource) -> Result<(ActiveStore, Sourc
             let store = occlusion::build_store(entries)?;
             Ok((store, metadata))
         }
-        DataSource::Url(url) => load_from_url(url, None).await.map(|r| r.unwrap()),
+        DataSource::Url(url) => {
+            load_from_url(url, None)
+                .await?
+                .ok_or_else(|| LoadError::InvalidFormat("Initial load returned no data".into()))
+        }
     }
 }
 

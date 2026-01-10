@@ -1,4 +1,4 @@
-use crate::HashMap;
+use crate::{HashMap, StoreError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -28,20 +28,16 @@ impl VecStore {
     ///
     /// The entries will be sorted by UUID for efficient binary search.
     /// Duplicates will cause an error to be returned.
-    pub fn new(mut entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
+    pub fn new(mut entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
         entries.sort_unstable_by_key(|(uuid, _)| *uuid);
 
         if let Some(dup) = entries.windows(2).find(|w| w[0].0 == w[1].0) {
-            return Err(format!("Duplicate UUID found: {}", dup[0].0));
+            return Err(StoreError::DuplicateUuid(dup[0].0));
         }
 
         Ok(Self { entries })
     }
 }
-
-// VecStore is immutable after construction, so it's safe to share across threads
-unsafe impl Send for VecStore {}
-unsafe impl Sync for VecStore {}
 
 impl crate::Store for VecStore {
     fn get_visibility(&self, uuid: &uuid::Uuid) -> Option<u8> {

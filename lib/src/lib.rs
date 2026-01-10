@@ -135,22 +135,22 @@ pub type ActiveStore = HashMapStore;
 /// The store implementation is selected at compile time based on feature flags.
 #[cfg(feature = "fullhash")]
 pub fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
-    FullHashStore::new(entries).map_err(StoreError::InvalidFormat)
+    FullHashStore::new(entries)
 }
 
 #[cfg(all(feature = "hybrid", not(feature = "fullhash")))]
 pub fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
-    HybridAuthStore::new(entries).map_err(StoreError::InvalidFormat)
+    HybridAuthStore::new(entries)
 }
 
 #[cfg(all(feature = "vec", not(feature = "hybrid"), not(feature = "fullhash")))]
 pub fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
-    VecStore::new(entries).map_err(StoreError::InvalidFormat)
+    VecStore::new(entries)
 }
 
 #[cfg(not(any(feature = "vec", feature = "hybrid", feature = "fullhash")))]
 pub fn build_store(entries: Vec<(Uuid, u8)>) -> Result<ActiveStore> {
-    HashMapStore::new(entries).map_err(StoreError::InvalidFormat)
+    HashMapStore::new(entries)
 }
 
 // Swappable store for runtime reloading
@@ -160,20 +160,20 @@ pub use swappable::SwappableStore;
 // Bench-only store builders for benchmark comparisons
 #[cfg(feature = "bench")]
 pub fn build_hashmap_store(entries: Vec<(Uuid, u8)>) -> Result<HashMapStore> {
-    HashMapStore::new(entries).map_err(StoreError::InvalidFormat)
+    HashMapStore::new(entries)
 }
 
 #[cfg(feature = "bench")]
 pub fn build_vec_store(entries: Vec<(Uuid, u8)>) -> Result<VecStore> {
-    VecStore::new(entries).map_err(StoreError::InvalidFormat)
+    VecStore::new(entries)
 }
 
 #[cfg(feature = "bench")]
 pub fn build_hybrid_store(entries: Vec<(Uuid, u8)>) -> Result<HybridAuthStore> {
-    HybridAuthStore::new(entries).map_err(StoreError::InvalidFormat)
+    HybridAuthStore::new(entries)
 }
 
 #[cfg(feature = "bench")]
 pub fn build_fullhash_store(entries: Vec<(Uuid, u8)>) -> Result<FullHashStore> {
-    FullHashStore::new(entries).map_err(StoreError::InvalidFormat)
+    FullHashStore::new(entries)
 }

@@ -52,60 +52,43 @@ impl SwappableStore {
         let mut guard = self.inner.write().expect("RwLock poisoned");
         *guard = new_store;
     }
+}
 
-    /// Get the visibility level for a given UUID.
-    ///
-    /// Returns `None` if the UUID is not found in the store.
+impl Store for SwappableStore {
     #[inline]
-    pub fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
+    fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
         let guard = self.inner.read().expect("RwLock poisoned");
         guard.get_visibility(uuid)
     }
 
-    /// Check if a UUID is visible under the given visibility mask.
-    ///
-    /// A UUID with visibility level L is visible to a request with mask M
-    /// if and only if L <= M.
     #[inline]
-    pub fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
+    fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
         let guard = self.inner.read().expect("RwLock poisoned");
         guard.is_visible(uuid, mask)
     }
 
-    /// Check multiple UUIDs against the same visibility mask.
-    ///
-    /// Returns a vector of booleans indicating visibility for each UUID.
-    pub fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
+    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
         let guard = self.inner.read().expect("RwLock poisoned");
         guard.check_batch(uuids, mask)
     }
 
-    /// Returns the total number of UUIDs in the store.
     #[inline]
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         let guard = self.inner.read().expect("RwLock poisoned");
         guard.len()
     }
 
-    /// Returns true if the store contains no UUIDs.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         let guard = self.inner.read().expect("RwLock poisoned");
         guard.is_empty()
     }
 
-    /// Calculate visibility distribution statistics.
-    ///
-    /// Returns a map from visibility level to count of UUIDs at that level.
-    pub fn visibility_distribution(&self) -> HashMap<u8, usize> {
+    fn visibility_distribution(&self) -> HashMap<u8, usize> {
         let guard = self.inner.read().expect("RwLock poisoned");
         guard.visibility_distribution()
     }
 }
-
-// SwappableStore is thread-safe by design
-unsafe impl Send for SwappableStore {}
-unsafe impl Sync for SwappableStore {}
 
 #[cfg(test)]
 mod tests {
