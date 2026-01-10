@@ -9,13 +9,24 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Builder stage: build dependencies then the application
 FROM chef AS builder
 
+# Build argument for feature selection (e.g., vec, hybrid, fullhash)
+ARG FEATURES=""
+
 # First, build dependencies (this layer is cached if Cargo.toml/Cargo.lock don't change)
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN if [ -n "$FEATURES" ]; then \
+        cargo chef cook --release --features "$FEATURES" --recipe-path recipe.json; \
+    else \
+        cargo chef cook --release --recipe-path recipe.json; \
+    fi
 
 # Copy source and build the application
 COPY . .
-RUN cargo build --release --bin server
+RUN if [ -n "$FEATURES" ]; then \
+        cargo build --release --bin server --features "$FEATURES"; \
+    else \
+        cargo build --release --bin server; \
+    fi
 
 # Runtime stage: minimal Alpine image with just the binary
 FROM alpine:3.21 AS runtime
