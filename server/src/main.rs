@@ -24,11 +24,11 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[command(version, about, long_about = None)]
 struct Args {
     /// Path to CSV file or URL (http:// or https://)
-    #[arg(value_name = "DATA_SOURCE")]
+    #[arg(value_name = "DATA_SOURCE", env = "OCCLUSION_DATA_SOURCE")]
     data_source: String,
 
     /// Reload interval in minutes (0 = no auto-reload)
-    #[arg(long, default_value = "0")]
+    #[arg(long, default_value = "0", env = "OCCLUSION_RELOAD_INTERVAL")]
     reload_interval: u64,
 }
 
