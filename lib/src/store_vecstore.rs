@@ -1,11 +1,6 @@
+use crate::HashMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-#[cfg(feature = "fx-hash")]
-use rustc_hash::FxHashMap as HashMap;
-
-#[cfg(not(feature = "fx-hash"))]
-use std::collections::HashMap;
 
 /// Sorted vector authorization store containing UUID-visibility mappings.
 ///
@@ -46,87 +41,6 @@ impl VecStore {
 
         Ok(Self { entries })
     }
-
-    /// Get the visibility level for a given UUID.
-    ///
-    /// Returns `None` if the UUID is not found in the store.
-    ///
-    /// # Performance
-    /// O(log n) binary search, approximately 51ns for millions of entries.
-    #[inline]
-    pub fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
-        self.entries
-            .binary_search_by_key(uuid, |(u, _)| *u)
-            .ok()
-            .map(|idx| self.entries[idx].1)
-    }
-
-    /// Check if a UUID is visible under the given visibility mask.
-    ///
-    /// A UUID with visibility level L is visible to a request with mask M
-    /// if and only if L <= M.
-    ///
-    /// Returns `false` if the UUID is not found in the store.
-    ///
-    /// # Example
-    /// ```ignore
-    /// // UUID has visibility level 8
-    /// assert_eq!(store.is_visible(&uuid, 10), true);  // 8 <= 10
-    /// assert_eq!(store.is_visible(&uuid, 3), false);  // 8 > 3
-    /// ```
-    #[inline]
-    pub fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
-        self.get_visibility(uuid)
-            .map(|level| level <= mask)
-            .unwrap_or(false)
-    }
-
-    /// Check multiple UUIDs against the same visibility mask.
-    ///
-    /// Returns a vector of booleans indicating visibility for each UUID.
-    /// This is more efficient than calling `is_visible` in a loop due to
-    /// cache locality benefits.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let uuids = vec![uuid1, uuid2, uuid3];
-    /// let results = store.check_batch(&uuids, 10);
-    /// // results[i] tells whether uuids[i] is visible at level 10
-    /// ```
-    pub fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
-        uuids
-            .iter()
-            .map(|uuid| self.is_visible(uuid, mask))
-            .collect()
-    }
-
-    /// Returns the total number of UUIDs in the store.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    /// Returns true if the store contains no UUIDs.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// Returns an iterator over all (UUID, visibility) pairs.
-    pub fn iter(&self) -> impl Iterator<Item = &(Uuid, u8)> {
-        self.entries.iter()
-    }
-
-    /// Calculate visibility distribution statistics.
-    ///
-    /// Returns a map from visibility level to count of UUIDs at that level.
-    fn visibility_distribution_impl(&self) -> HashMap<u8, usize> {
-        let mut dist: HashMap<_, _> = Default::default();
-        for (_, level) in &self.entries {
-            *dist.entry(*level).or_insert(0) += 1;
-        }
-        dist
-    }
 }
 
 // VecStore is immutable after construction, so it's safe to share across threads
@@ -166,13 +80,20 @@ impl crate::Store for VecStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        self.visibility_distribution_impl()
+        let mut dist: HashMap<_, _> = Default::default();
+
+        for (_, level) in &self.entries {
+            *dist.entry(*level).or_insert(0) += 1;
+        }
+
+        dist
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Store;
     use uuid::Uuid;
 
     fn uuid_from_u128(n: u128) -> Uuid {
@@ -261,7 +182,7 @@ mod tests {
         ];
         let store = VecStore::new(entries).unwrap();
 
-        let dist = store.visibility_distribution_impl();
+        let dist = store.visibility_distribution();
         assert_eq!(dist.get(&5), Some(&3));
         assert_eq!(dist.get(&10), Some(&1));
         assert_eq!(dist.get(&15), None);

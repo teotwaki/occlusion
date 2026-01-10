@@ -1,9 +1,4 @@
-#[cfg(feature = "fx-hash")]
-use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
-
-#[cfg(not(feature = "fx-hash"))]
-use std::collections::{HashMap, HashSet};
-
+use crate::{HashMap, HashSet, Store};
 use uuid::Uuid;
 
 /// Full hash-based authorization store using one HashSet per visibility level.
@@ -16,11 +11,11 @@ use uuid::Uuid;
 /// - Want guaranteed O(1) lookups regardless of distribution
 /// - Memory is not a constraint
 ///
-/// ## Performance (2M UUIDs)
-/// - Level 0 lookup: ~12ns
-/// - Higher level lookup: ~71ns (checks multiple levels with early exit)
-/// - Worst case (mask=0): ~11ns (best of all implementations)
-/// - Batch (100): ~1.9µs
+/// ## Performance (2M UUIDs, with FxHash)
+/// - Level 0 lookup: ~2.3ns
+/// - Higher level lookup: ~21ns (checks multiple levels with early exit)
+/// - Worst case (mask=0): ~6.2ns (best of all implementations)
+/// - Batch (100): ~422ns
 /// - Memory: Highest overhead (256 HashSets)
 #[derive(Debug, Clone)]
 pub struct FullHashStore {
@@ -49,95 +44,6 @@ impl FullHashStore {
         }
 
         Ok(Self { by_level })
-    }
-
-    /// Get the visibility level for a given UUID.
-    ///
-    /// Returns `None` if the UUID is not found in the store.
-    ///
-    /// # Performance
-    /// O(1) hash lookup across all levels (worst case: 256 hash lookups)
-    /// In practice: early exit on first match, average case much better
-    #[inline]
-    pub fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
-        // Search through levels 0-255 until we find the UUID
-        for (level, set) in self.by_level.iter().enumerate() {
-            if set.contains(uuid) {
-                return Some(level as u8);
-            }
-        }
-        None
-    }
-
-    /// Check if a UUID is visible under the given visibility mask.
-    ///
-    /// A UUID with visibility level L is visible to a request with mask M
-    /// if and only if L <= M.
-    ///
-    /// Returns `false` if the UUID is not found in the store.
-    ///
-    /// # Performance
-    /// O(1) for each level checked. For mask M, checks up to M+1 levels.
-    /// Average case: Early exit when UUID found.
-    ///
-    /// # Optimization
-    /// Only checks levels 0..=mask (no need to check higher levels)
-    ///
-    /// # Example
-    /// ```ignore
-    /// // UUID at level 5, mask 10: checks levels 0,1,2,3,4,5 -> found at 5
-    /// assert_eq!(store.is_visible(&uuid, 10), true);
-    ///
-    /// // UUID at level 5, mask 3: checks levels 0,1,2,3 -> not found
-    /// assert_eq!(store.is_visible(&uuid, 3), false);
-    /// ```
-    #[inline]
-    pub fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
-        // Only check levels 0 through mask (inclusive)
-        // Early exit as soon as we find the UUID
-        for level in 0..=mask {
-            if self.by_level[level as usize].contains(uuid) {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Check multiple UUIDs against the same visibility mask.
-    ///
-    /// Returns a vector of booleans indicating visibility for each UUID.
-    pub fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
-        uuids
-            .iter()
-            .map(|uuid| self.is_visible(uuid, mask))
-            .collect()
-    }
-
-    /// Returns the total number of UUIDs in the store.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.by_level.iter().map(|set| set.len()).sum()
-    }
-
-    /// Returns true if the store contains no UUIDs.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.by_level.iter().all(|set| set.is_empty())
-    }
-
-    /// Calculate visibility distribution statistics.
-    ///
-    /// Returns a map from visibility level to count of UUIDs at that level.
-    fn visibility_distribution_impl(&self) -> HashMap<u8, usize> {
-        let mut dist: HashMap<_, _> = Default::default();
-
-        for (level, set) in self.by_level.iter().enumerate() {
-            if !set.is_empty() {
-                dist.insert(level as u8, set.len());
-            }
-        }
-
-        dist
     }
 
     /// Returns statistics about the store distribution.
@@ -223,7 +129,15 @@ impl crate::Store for FullHashStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        self.visibility_distribution_impl()
+        let mut dist: HashMap<_, _> = Default::default();
+
+        for (level, set) in self.by_level.iter().enumerate() {
+            if !set.is_empty() {
+                dist.insert(level as u8, set.len());
+            }
+        }
+
+        dist
     }
 }
 

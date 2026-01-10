@@ -5,14 +5,19 @@ edition = "2024"
 
 [features]
 default = []
-fx-hash = ["dep:rustc-hash", "occlusion/fx-hash"]
+# Use std HashMap instead of FxHash
+nofx = ["occlusion/nofx"]
+# Alternative store implementations
+vec = ["occlusion/vec"]
+hybrid = ["occlusion/hybrid"]
+fullhash = ["occlusion/fullhash"]
 
 [dependencies]
 occlusion = { path = "../lib" }
+rustc-hash = { workspace = true }
 
 clap = { version = "4.5.54", features = ["derive"] }
 rocket = { version = "0.5", features = ["json"] }
-rustc-hash = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 thiserror = { workspace = true }

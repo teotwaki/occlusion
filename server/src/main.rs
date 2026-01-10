@@ -7,7 +7,7 @@ mod routes;
 
 use clap::Parser;
 use error::Result;
-use occlusion::{Store, StoreAlgorithm, StoreBuilder};
+use occlusion::{ActiveStore, Store, load_from_csv};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -19,10 +19,6 @@ struct Args {
     /// Path to the CSV data file containing UUIDs and visibility levels
     #[arg(value_name = "DATA_FILE")]
     data_file: String,
-
-    /// Store implementation algorithm
-    #[arg(short, long, value_name = "ALGORITHM", default_value = "hashmap")]
-    algorithm: StoreAlgorithm,
 }
 
 /// Initialize tracing subscriber for structured logging
@@ -35,27 +31,13 @@ fn init_tracing() {
         .init();
 }
 
-/// Load the store based on the algorithm and data file
-fn load_store(algorithm: StoreAlgorithm, data_path: &str) -> Result<Box<dyn Store>> {
-    info!(
-        algorithm = %algorithm,
-        data_file = %data_path,
-        "Loading authorization store"
-    );
+/// Load the store from a CSV file
+fn load_store(data_path: &str) -> Result<ActiveStore> {
+    info!(data_file = %data_path, "Loading authorization store");
 
-    let store = StoreBuilder::new()
-        .algorithm(algorithm)
-        .load_from_csv(data_path)?;
+    let store = load_from_csv(data_path)?;
 
-    let distribution = store.visibility_distribution();
-    let total_levels = distribution.len();
-
-    info!(
-        algorithm = %algorithm,
-        uuid_count = store.len(),
-        unique_levels = total_levels,
-        "Store loaded successfully"
-    );
+    info!(uuid_count = store.len(), "Store loaded successfully");
 
     Ok(store)
 }
@@ -69,7 +51,7 @@ fn rocket() -> _ {
     let args = Args::parse();
 
     // Load the store
-    let store = match load_store(args.algorithm, &args.data_file) {
+    let store = match load_store(&args.data_file) {
         Ok(store) => store,
         Err(e) => {
             error!(error = %e, "Failed to start server");

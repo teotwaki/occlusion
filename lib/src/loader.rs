@@ -1,12 +1,24 @@
+use crate::ActiveStore;
 use crate::error::{Result, StoreError};
-use crate::store_fullhash::FullHashStore;
+
+#[cfg(any(
+    feature = "bench",
+    not(any(feature = "vec", feature = "hybrid", feature = "fullhash"))
+))]
 use crate::store_hashmap::HashMapStore;
-use crate::store_hybrid::HybridAuthStore;
-use crate::store_vecstore::VecStore;
 use csv::ReaderBuilder;
 use serde::Deserialize;
 use std::path::Path;
 use uuid::Uuid;
+
+#[cfg(any(feature = "bench", feature = "fullhash"))]
+use crate::store_fullhash::FullHashStore;
+
+#[cfg(any(feature = "bench", feature = "hybrid"))]
+use crate::store_hybrid::HybridAuthStore;
+
+#[cfg(any(feature = "bench", feature = "vec"))]
+use crate::store_vecstore::VecStore;
 
 #[derive(Debug, Deserialize)]
 struct CsvRecord {
@@ -14,30 +26,35 @@ struct CsvRecord {
     visibility_level: u8,
 }
 
-/// Load the default store (HashMapStore) from a CSV file.
+/// Load entries from a CSV file.
 ///
-/// This is a convenience alias for `load_hashmap_from_csv`, which loads
-/// the recommended default implementation.
-///
-/// # Example CSV format
-/// ```csv
-/// uuid,visibility_level
-/// 550e8400-e29b-41d4-a716-446655440000,8
-/// 6ba7b810-9dad-11d1-80b4-00c04fd430c8,15
-/// ```
-///
-/// # Performance
-/// See `load_hashmap_from_csv` for details.
-pub fn load_default_from_csv<P: AsRef<Path>>(path: P) -> Result<HashMapStore> {
-    load_hashmap_from_csv(path)
+/// Common helper that parses the CSV and returns a vector of (UUID, visibility) pairs.
+fn load_entries<P: AsRef<Path>>(path: P) -> Result<Vec<(Uuid, u8)>> {
+    let mut reader = ReaderBuilder::new().has_headers(true).from_path(path)?;
+
+    let mut entries = Vec::new();
+
+    for (line_num, result) in reader.deserialize().enumerate() {
+        let record: CsvRecord = result?;
+
+        let uuid = record
+            .uuid
+            .parse::<Uuid>()
+            .map_err(|e| StoreError::InvalidFormat(format!("Line {}: {}", line_num + 2, e)))?;
+
+        entries.push((uuid, record.visibility_level));
+    }
+
+    Ok(entries)
 }
 
-/// Load a VecStore (sorted vector) from a CSV file.
+/// Load the active store implementation from a CSV file.
 ///
-/// **Note**: For most applications, prefer `load_hashmap_from_csv` or
-/// `load_default_from_csv` which are 4x faster.
-///
-/// The CSV file must have a header row with columns: `uuid,visibility_level`
+/// The store implementation is selected at compile time based on feature flags:
+/// - Default: `HashMapStore` (~2.7ns lookups with FxHash)
+/// - `--features vec`: `VecStore` (~51ns lookups, lowest memory)
+/// - `--features hybrid`: `HybridAuthStore` (optimized for skewed distributions)
+/// - `--features fullhash`: `FullHashStore` (best worst-case performance)
 ///
 /// # Example CSV format
 /// ```csv
@@ -45,10 +62,6 @@ pub fn load_default_from_csv<P: AsRef<Path>>(path: P) -> Result<HashMapStore> {
 /// 550e8400-e29b-41d4-a716-446655440000,8
 /// 6ba7b810-9dad-11d1-80b4-00c04fd430c8,15
 /// ```
-///
-/// # When to Use
-/// Use this when memory efficiency is critical. For most applications,
-/// prefer `load_hashmap_from_csv` which is 4x faster.
 ///
 /// # Errors
 /// Returns an error if:
@@ -56,175 +69,74 @@ pub fn load_default_from_csv<P: AsRef<Path>>(path: P) -> Result<HashMapStore> {
 /// - The CSV format is invalid
 /// - Any UUID cannot be parsed
 /// - Duplicate UUIDs are found
+#[cfg(feature = "fullhash")]
+pub fn load_from_csv<P: AsRef<Path>>(path: P) -> Result<ActiveStore> {
+    let entries = load_entries(path)?;
+    FullHashStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(all(feature = "hybrid", not(feature = "fullhash")))]
+pub fn load_from_csv<P: AsRef<Path>>(path: P) -> Result<ActiveStore> {
+    let entries = load_entries(path)?;
+    HybridAuthStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(all(feature = "vec", not(feature = "hybrid"), not(feature = "fullhash")))]
+pub fn load_from_csv<P: AsRef<Path>>(path: P) -> Result<ActiveStore> {
+    let entries = load_entries(path)?;
+    VecStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+#[cfg(not(any(feature = "vec", feature = "hybrid", feature = "fullhash")))]
+pub fn load_from_csv<P: AsRef<Path>>(path: P) -> Result<ActiveStore> {
+    let entries = load_entries(path)?;
+    HashMapStore::new(entries).map_err(StoreError::InvalidFormat)
+}
+
+// ============================================================================
+// Individual store loaders (only available with bench feature for comparisons)
+// ============================================================================
+
+/// Load a HashMapStore from a CSV file.
 ///
-/// # Performance
-/// - Loading: < 1 second for 1M UUIDs (dominated by UUID parsing)
-/// - Lookups: ~51ns (O(log n) binary search)
-/// - Memory: ~17 bytes/UUID (most efficient)
-pub fn load_from_csv<P: AsRef<Path>>(path: P) -> Result<VecStore> {
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .from_path(path)?;
+/// Only available with the `bench` feature for benchmark comparisons.
+#[cfg(feature = "bench")]
+pub fn load_hashmap_from_csv<P: AsRef<Path>>(path: P) -> Result<HashMapStore> {
+    let entries = load_entries(path)?;
+    HashMapStore::new(entries).map_err(StoreError::InvalidFormat)
+}
 
-    let mut entries = Vec::new();
-
-    for (line_num, result) in reader.deserialize().enumerate() {
-        let record: CsvRecord = result?;
-
-        // Parse UUID
-        let uuid = record
-            .uuid
-            .parse::<Uuid>()
-            .map_err(|e| StoreError::InvalidFormat(format!("Line {}: {}", line_num + 2, e)))?;
-
-        entries.push((uuid, record.visibility_level));
-    }
-
-    // Create store (this will sort and check for duplicates)
-    VecStore::new(entries)
-        .map_err(|e| StoreError::InvalidFormat(e))
+/// Load a VecStore from a CSV file.
+///
+/// Only available with the `bench` feature for benchmark comparisons.
+#[cfg(feature = "bench")]
+pub fn load_vec_from_csv<P: AsRef<Path>>(path: P) -> Result<VecStore> {
+    let entries = load_entries(path)?;
+    VecStore::new(entries).map_err(StoreError::InvalidFormat)
 }
 
 /// Load a HybridAuthStore from a CSV file.
 ///
-/// This function loads the same CSV format as `load_from_csv`, but creates
-/// a HybridAuthStore optimized for skewed distributions where most UUIDs
-/// have visibility level 0.
-///
-/// # Example CSV format
-/// ```csv
-/// uuid,visibility_level
-/// 550e8400-e29b-41d4-a716-446655440000,0
-/// 6ba7b810-9dad-11d1-80b4-00c04fd430c8,15
-/// ```
-///
-/// # When to Use
-/// Use this when you have a known skewed distribution (80-90% at level 0)
-/// and want optimized performance for that common case. For unknown distributions,
-/// prefer `load_hashmap_from_csv`.
-///
-/// # Performance
-/// - Best suited for distributions where 80-90% of UUIDs have visibility 0
-/// - Level 0 lookups: ~12ns (competitive with HashMap)
-/// - Higher level lookups: ~58ns
-/// - Provides ~4x faster average lookups compared to binary search on skewed data
+/// Only available with the `bench` feature for benchmark comparisons.
+#[cfg(feature = "bench")]
 pub fn load_hybrid_from_csv<P: AsRef<Path>>(path: P) -> Result<HybridAuthStore> {
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .from_path(path)?;
-
-    let mut entries = Vec::new();
-
-    for (line_num, result) in reader.deserialize().enumerate() {
-        let record: CsvRecord = result?;
-
-        // Parse UUID
-        let uuid = record
-            .uuid
-            .parse::<Uuid>()
-            .map_err(|e| StoreError::InvalidFormat(format!("Line {}: {}", line_num + 2, e)))?;
-
-        entries.push((uuid, record.visibility_level));
-    }
-
-    // Create hybrid store (this will partition, sort, and check for duplicates)
-    HybridAuthStore::new(entries)
-        .map_err(|e| StoreError::InvalidFormat(e))
+    let entries = load_entries(path)?;
+    HybridAuthStore::new(entries).map_err(StoreError::InvalidFormat)
 }
 
 /// Load a FullHashStore from a CSV file.
 ///
-/// This function loads the same CSV format as `load_from_csv`, but creates
-/// a FullHashStore that uses one HashSet per visibility level.
-///
-/// # Example CSV format
-/// ```csv
-/// uuid,visibility_level
-/// 550e8400-e29b-41d4-a716-446655440000,0
-/// 6ba7b810-9dad-11d1-80b4-00c04fd430c8,15
-/// ```
-///
-/// # When to Use
-/// Use this when you need to optimize worst-case scenarios (mask=0 queries).
-/// For general use, prefer `load_hashmap_from_csv`.
-///
-/// # Performance
-/// - O(1) lookups with early exit optimization
-/// - Worst case (mask=0): ~11ns (best of all implementations)
-/// - Higher levels: ~71ns (checks multiple levels)
-/// - Higher memory overhead (256 HashSets)
+/// Only available with the `bench` feature for benchmark comparisons.
+#[cfg(feature = "bench")]
 pub fn load_fullhash_from_csv<P: AsRef<Path>>(path: P) -> Result<FullHashStore> {
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .from_path(path)?;
-
-    let mut entries = Vec::new();
-
-    for (line_num, result) in reader.deserialize().enumerate() {
-        let record: CsvRecord = result?;
-
-        // Parse UUID
-        let uuid = record
-            .uuid
-            .parse::<Uuid>()
-            .map_err(|e| StoreError::InvalidFormat(format!("Line {}: {}", line_num + 2, e)))?;
-
-        entries.push((uuid, record.visibility_level));
-    }
-
-    // Create full hash store (this will partition into HashSets and check for duplicates)
-    FullHashStore::new(entries)
-        .map_err(|e| StoreError::InvalidFormat(e))
-}
-
-/// Load a HashMapStore from a CSV file (RECOMMENDED DEFAULT).
-///
-/// This function loads the same CSV format as `load_from_csv`, but creates
-/// a HashMapStore that uses a simple `HashMap<Uuid, u8>` for O(1) lookups.
-///
-/// **This is the recommended default** for most applications due to its
-/// simplicity, speed, and consistent performance.
-///
-/// # Example CSV format
-/// ```csv
-/// uuid,visibility_level
-/// 550e8400-e29b-41d4-a716-446655440000,0
-/// 6ba7b810-9dad-11d1-80b4-00c04fd430c8,15
-/// ```
-///
-/// # Performance
-/// - Fastest implementation in almost all scenarios
-/// - Consistent ~13ns lookups regardless of visibility level
-/// - Batch queries: ~1.33µs for 100 UUIDs (fastest)
-/// - 4-6x faster than sorted vector implementation
-/// - Competitive with specialized implementations even on skewed workloads
-pub fn load_hashmap_from_csv<P: AsRef<Path>>(path: P) -> Result<HashMapStore> {
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .from_path(path)?;
-
-    let mut entries = Vec::new();
-
-    for (line_num, result) in reader.deserialize().enumerate() {
-        let record: CsvRecord = result?;
-
-        // Parse UUID
-        let uuid = record
-            .uuid
-            .parse::<Uuid>()
-            .map_err(|e| StoreError::InvalidFormat(format!("Line {}: {}", line_num + 2, e)))?;
-
-        entries.push((uuid, record.visibility_level));
-    }
-
-    // Create hashmap store (this will check for duplicates)
-    HashMapStore::new(entries)
-        .map_err(|e| StoreError::InvalidFormat(e))
+    let entries = load_entries(path)?;
+    FullHashStore::new(entries).map_err(StoreError::InvalidFormat)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Store;
     use std::io::Write;
     use tempfile::NamedTempFile;
 

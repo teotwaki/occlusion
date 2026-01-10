@@ -1,8 +1,29 @@
+//! Benchmarks comparing all store implementations.
+//!
+//! Run with: `cargo bench -p occlusion --features bench`
+//!
+//! ## Performance Summary (2M UUIDs, with FxHash)
+//!
+//! | Implementation | Uniform | Level 0 | Higher | Batch (100) |
+//! |----------------|---------|---------|--------|-------------|
+//! | HashMapStore | 2.7ns | 2.7ns | 2.8ns | 347ns |
+//! | VecStore | 51ns | 51ns | 51ns | 7.9µs |
+//! | HybridAuthStore | 53ns | 2.5ns | 48ns | 780ns |
+//! | FullHashStore | 12ns | 2.3ns | 21ns | 422ns |
+//!
+//! ## Key Findings
+//!
+//! - **HashMapStore** is the fastest and simplest - recommended default
+//! - **FxHash** provides 4-5x speedup over std HashMap
+//! - **VecStore** uses least memory (~17 bytes/UUID) but is slowest
+//! - **HybridAuthStore** excels when 80-90% of UUIDs are at level 0
+//! - **FullHashStore** has best worst-case performance for mask=0 queries
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use std::hint::black_box;
 use occlusion::{FullHashStore, HashMapStore, HybridAuthStore, Store, VecStore};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use std::hint::black_box;
 use uuid::Uuid;
 
 // Helper to generate deterministic random UUIDs using a seeded RNG

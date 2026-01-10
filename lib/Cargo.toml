@@ -5,11 +5,19 @@ edition = "2024"
 
 [features]
 default = []
-fx-hash = ["dep:rustc-hash"]
+# Use std HashMap instead of FxHash (slower, but no extra dependency)
+nofx = []
+# Alternative store implementations (mutually exclusive in production)
+# Enable one to swap out the default HashMapStore
+vec = []
+hybrid = []
+fullhash = []
+# Enable all stores for benchmarking comparisons
+bench = []
 
 [dependencies]
 csv = "1.4.0"
-rustc-hash = { workspace = true, optional = true }
+rustc-hash = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
@@ -23,3 +31,4 @@ tempfile = "3.24.0"
 [[bench]]
 name = "store_bench"
 harness = false
+required-features = ["bench"]

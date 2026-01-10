@@ -1,9 +1,4 @@
-#[cfg(feature = "fx-hash")]
-use rustc_hash::FxHashMap as HashMap;
-
-#[cfg(not(feature = "fx-hash"))]
-use std::collections::HashMap;
-
+use crate::HashMap;
 use uuid::Uuid;
 
 /// Pure HashMap-based authorization store (RECOMMENDED DEFAULT).
@@ -17,9 +12,9 @@ use uuid::Uuid;
 /// - Need consistent, predictable O(1) performance
 /// - Simplicity and speed are priorities
 ///
-/// ## Performance (2M UUIDs)
-/// - All lookups: ~13ns (consistent O(1))
-/// - Batch (100): ~1.33µs (fastest)
+/// ## Performance (2M UUIDs, with FxHash)
+/// - All lookups: ~2.7ns (consistent O(1))
+/// - Batch (100): ~347ns (fastest)
 /// - Memory: ~24-32 bytes/UUID (standard HashMap overhead)
 ///
 /// ## Advantages
@@ -38,10 +33,10 @@ impl HashMapStore {
     ///
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, String> {
-        #[cfg(feature = "fx-hash")]
+        #[cfg(not(feature = "nofx"))]
         let mut map = HashMap::with_capacity_and_hasher(entries.len(), Default::default());
 
-        #[cfg(not(feature = "fx-hash"))]
+        #[cfg(feature = "nofx")]
         let mut map = HashMap::with_capacity(entries.len());
 
         for (uuid, level) in entries {
@@ -51,19 +46,6 @@ impl HashMapStore {
         }
 
         Ok(Self { map })
-    }
-
-    /// Calculate visibility distribution statistics.
-    ///
-    /// Returns a map from visibility level to count of UUIDs at that level.
-    fn visibility_distribution_impl(&self) -> HashMap<u8, usize> {
-        let mut dist = HashMap::default();
-
-        for level in self.map.values() {
-            *dist.entry(*level).or_insert(0) += 1;
-        }
-
-        dist
     }
 }
 
@@ -77,7 +59,6 @@ impl crate::Store for HashMapStore {
         self.map.get(uuid).copied()
     }
 
-    #[inline]
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
         self.map
             .get(uuid)
@@ -103,7 +84,13 @@ impl crate::Store for HashMapStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        self.visibility_distribution_impl()
+        let mut dist = HashMap::default();
+
+        for level in self.map.values() {
+            *dist.entry(*level).or_insert(0) += 1;
+        }
+
+        dist
     }
 }
 

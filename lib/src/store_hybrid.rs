@@ -1,11 +1,5 @@
+use crate::{HashMap, HashSet, Store};
 use serde::{Deserialize, Serialize};
-
-#[cfg(feature = "fx-hash")]
-use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
-
-#[cfg(not(feature = "fx-hash"))]
-use std::collections::{HashMap, HashSet};
-
 use uuid::Uuid;
 
 /// Hybrid authorization store optimized for skewed distributions.
@@ -22,10 +16,10 @@ use uuid::Uuid;
 /// - Need similar performance to HashMap but with slightly lower memory for the hot path
 /// - Want optimized early exit for mask=0 queries
 ///
-/// ## Performance (2M UUIDs, 90% at level 0)
-/// - Level 0 lookup: ~12ns (90% of queries)
-/// - Higher level lookup: ~58ns (10% of queries)
-/// - Batch (100): ~1.8µs
+/// ## Performance (2M UUIDs, 90% at level 0, with FxHash)
+/// - Level 0 lookup: ~2.5ns (90% of queries)
+/// - Higher level lookup: ~48ns (10% of queries)
+/// - Batch (100): ~780ns
 /// - Memory: ~24 bytes/UUID for level 0, ~17 for others
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HybridAuthStore {
@@ -77,109 +71,6 @@ impl HybridAuthStore {
             level_0,
             higher_levels,
         })
-    }
-
-    /// Get the visibility level for a given UUID.
-    ///
-    /// Returns `None` if the UUID is not found in the store.
-    ///
-    /// # Performance
-    /// - O(1) for UUIDs at level 0 (90% of queries in skewed distribution)
-    /// - O(log n) for UUIDs at higher levels (10% of queries)
-    #[inline]
-    pub fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
-        // Fast path: check level 0 first
-        if self.level_0.contains(uuid) {
-            return Some(0);
-        }
-
-        // Slow path: binary search higher levels
-        self.higher_levels
-            .binary_search_by_key(uuid, |(u, _)| *u)
-            .ok()
-            .map(|idx| self.higher_levels[idx].1)
-    }
-
-    /// Check if a UUID is visible under the given visibility mask.
-    ///
-    /// A UUID with visibility level L is visible to a request with mask M
-    /// if and only if L <= M.
-    ///
-    /// Returns `false` if the UUID is not found in the store.
-    ///
-    /// # Performance
-    /// - O(1) for UUIDs at level 0 (90% hit rate in skewed distribution) - ~4x faster!
-    /// - O(log n) for UUIDs at higher levels (10% of queries)
-    ///
-    /// # Example
-    /// ```ignore
-    /// // UUID has visibility level 0
-    /// assert_eq!(store.is_visible(&uuid, 10), true);  // 0 <= 10
-    /// assert_eq!(store.is_visible(&uuid, 0), true);   // 0 <= 0
-    ///
-    /// // UUID has visibility level 8
-    /// assert_eq!(store.is_visible(&uuid, 10), true);  // 8 <= 10
-    /// assert_eq!(store.is_visible(&uuid, 3), false);  // 8 > 3
-    /// ```
-    #[inline]
-    pub fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
-        // Fast path: check level 0 first (90% probability)
-        // Since level 0 is always <= any mask (u8), we just check presence
-        if self.level_0.contains(uuid) {
-            return true;
-        }
-
-        // Early exit: if mask is 0 and not in level_0, it's not visible
-        if mask == 0 {
-            return false;
-        }
-
-        // Slow path: binary search higher levels and compare
-        self.higher_levels
-            .binary_search_by_key(uuid, |(u, _)| *u)
-            .ok()
-            .map(|idx| self.higher_levels[idx].1 <= mask)
-            .unwrap_or(false)
-    }
-
-    /// Check multiple UUIDs against the same visibility mask.
-    ///
-    /// Returns a vector of booleans indicating visibility for each UUID.
-    /// Benefits from cache locality and early exits for level 0 UUIDs.
-    pub fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
-        uuids
-            .iter()
-            .map(|uuid| self.is_visible(uuid, mask))
-            .collect()
-    }
-
-    /// Returns the total number of UUIDs in the store.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.level_0.len() + self.higher_levels.len()
-    }
-
-    /// Returns true if the store contains no UUIDs.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.level_0.is_empty() && self.higher_levels.is_empty()
-    }
-
-    /// Calculate visibility distribution statistics.
-    ///
-    /// Returns a map from visibility level to count of UUIDs at that level.
-    fn visibility_distribution_impl(&self) -> HashMap<u8, usize> {
-        let mut dist: HashMap<_, _> = Default::default();
-
-        if !self.level_0.is_empty() {
-            dist.insert(0, self.level_0.len());
-        }
-
-        for (_, level) in &self.higher_levels {
-            *dist.entry(*level).or_insert(0) += 1;
-        }
-
-        dist
     }
 
     /// Returns statistics about the store distribution.
@@ -279,7 +170,17 @@ impl crate::Store for HybridAuthStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        self.visibility_distribution_impl()
+        let mut dist: HashMap<_, _> = Default::default();
+
+        if !self.level_0.is_empty() {
+            dist.insert(0, self.level_0.len());
+        }
+
+        for (_, level) in &self.higher_levels {
+            *dist.entry(*level).or_insert(0) += 1;
+        }
+
+        dist
     }
 }
 

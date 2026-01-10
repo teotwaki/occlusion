@@ -1,16 +1,13 @@
 use crate::models::*;
-use occlusion::Store;
-use rocket::serde::json::Json;
+use occlusion::{ActiveStore, Store};
 use rocket::State;
+use rocket::serde::json::Json;
 
 /// Check if a single object is visible under the given visibility mask
 ///
 /// POST /api/v1/check
 #[post("/api/v1/check", data = "<request>")]
-pub fn check(
-    store: &State<Box<dyn Store>>,
-    request: Json<CheckRequest>,
-) -> Json<CheckResponse> {
+pub fn check(store: &State<ActiveStore>, request: Json<CheckRequest>) -> Json<CheckResponse> {
     let is_visible = store.is_visible(&request.object, request.visibility_mask);
 
     Json(CheckResponse {
@@ -24,7 +21,7 @@ pub fn check(
 /// POST /api/v1/check/batch
 #[post("/api/v1/check/batch", data = "<request>")]
 pub fn check_batch(
-    store: &State<Box<dyn Store>>,
+    store: &State<ActiveStore>,
     request: Json<BatchCheckRequest>,
 ) -> Json<BatchCheckResponse> {
     let results = request
@@ -46,7 +43,7 @@ pub fn check_batch(
 ///
 /// GET /health
 #[get("/health")]
-pub fn health(store: &State<Box<dyn Store>>) -> Json<HealthResponse> {
+pub fn health(store: &State<ActiveStore>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
         uuid_count: store.len(),
@@ -57,7 +54,7 @@ pub fn health(store: &State<Box<dyn Store>>) -> Json<HealthResponse> {
 ///
 /// GET /api/v1/stats
 #[get("/api/v1/stats")]
-pub fn stats(store: &State<Box<dyn Store>>) -> Json<StatsResponse> {
+pub fn stats(store: &State<ActiveStore>) -> Json<StatsResponse> {
     Json(StatsResponse {
         total_uuids: store.len(),
         visibility_distribution: store.visibility_distribution(),
