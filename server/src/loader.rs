@@ -6,13 +6,23 @@ use crate::{
 };
 use occlusion::{ActiveStore, Store};
 use serde::Deserialize;
-use std::{path::PathBuf, sync::LazyLock, time::Instant};
+use std::{path::PathBuf, sync::LazyLock, time::Duration, time::Instant};
 use tracing::info;
 use uuid::Uuid;
 
+/// Default HTTP timeout in seconds.
+const DEFAULT_HTTP_TIMEOUT_SECS: u64 = 30;
+
 static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    let timeout_secs = std::env::var("OCCLUSION_HTTP_TIMEOUT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_HTTP_TIMEOUT_SECS);
+
     reqwest::Client::builder()
         .user_agent(concat!("occlusion/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(timeout_secs))
+        .connect_timeout(Duration::from_secs(10))
         .build()
         .expect("Failed to build HTTP client")
 });

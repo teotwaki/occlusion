@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;
 use server::{
@@ -19,6 +19,16 @@ use std::{
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+/// Action to take when max reload failures is exceeded.
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+enum FailureAction {
+    /// Shut down the server
+    #[default]
+    Shutdown,
+    /// Clear the store (replace with empty data)
+    Clear,
+}
+
 /// High-performance authorization server for UUID visibility lookups
 #[derive(Parser, Debug)]
 #[command(name = "occlusion")]
@@ -32,6 +42,14 @@ struct Args {
     /// Reload interval in minutes (0 = no auto-reload)
     #[arg(long, default_value = "60", env = "OCCLUSION_RELOAD_INTERVAL")]
     reload_interval: u64,
+
+    /// Maximum consecutive reload failures before taking action (0 = unlimited)
+    #[arg(long, default_value = "0", env = "OCCLUSION_MAX_RELOAD_FAILURES")]
+    max_reload_failures: u32,
+
+    /// Action to take when max reload failures is exceeded
+    #[arg(long, default_value = "shutdown", env = "OCCLUSION_ON_MAX_FAILURES")]
+    on_max_failures: FailureAction,
 
     /// Output logs as JSON
     #[arg(long, env = "OCCLUSION_JSON_LOGS")]
@@ -72,26 +90,78 @@ async fn load_store(source: &DataSource) -> Result<(SwappableStore, SourceMetada
     Ok((SwappableStore::new(store), metadata))
 }
 
-/// Spawn the reload scheduler task
+/// Initial backoff delay on failure (5 seconds).
+const INITIAL_BACKOFF_SECS: u64 = 5;
+/// Maximum backoff delay (5 minutes).
+const MAX_BACKOFF_SECS: u64 = 300;
+
+/// Result of recording a failure in the tracker.
+enum FailureResponse {
+    /// Retry after the given backoff duration.
+    Backoff(Duration),
+    /// Max failures exceeded, take the configured action.
+    MaxExceeded(FailureAction),
+}
+
+/// Tracks consecutive reload failures with exponential backoff.
+struct FailureTracker {
+    consecutive: u32,
+    max: u32,
+    action: FailureAction,
+}
+
+impl FailureTracker {
+    fn new(max: u32, action: FailureAction) -> Self {
+        Self {
+            consecutive: 0,
+            max,
+            action,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.consecutive = 0;
+    }
+
+    fn record(&mut self) -> FailureResponse {
+        self.consecutive = self.consecutive.saturating_add(1);
+
+        if self.max > 0 && self.consecutive >= self.max {
+            FailureResponse::MaxExceeded(self.action)
+        } else {
+            // Exponential backoff: 5s, 10s, 20s, 40s, ... capped at MAX_BACKOFF_SECS
+            let backoff_secs =
+                (INITIAL_BACKOFF_SECS << (self.consecutive - 1)).min(MAX_BACKOFF_SECS);
+            FailureResponse::Backoff(Duration::from_secs(backoff_secs))
+        }
+    }
+
+    fn count(&self) -> u32 {
+        self.consecutive
+    }
+}
+
+/// Spawn the reload scheduler task with exponential backoff on failures.
 fn spawn_reload_scheduler(
     store: SwappableStore,
     reload_state: Arc<ReloadState>,
     interval_mins: u64,
+    max_failures: u32,
+    on_max_failures: FailureAction,
 ) {
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(interval_mins * 60));
+        let base_interval = Duration::from_secs(interval_mins * 60);
+        let mut failures = FailureTracker::new(max_failures, on_max_failures);
 
-        // Skip the first tick (fires immediately)
-        interval.tick().await;
+        // Initial delay before first check
+        tokio::time::sleep(base_interval).await;
 
         loop {
-            interval.tick().await;
-
             info!(source = %reload_state.source, "Checking for data source changes");
 
             let old_metadata = {
-                let metadata = reload_state.metadata.read().expect("RwLock poisoned");
-                metadata.clone()
+                let guard = reload_state.metadata.read().expect("RwLock poisoned");
+                guard.clone()
             };
 
             match load(&reload_state.source, Some(&old_metadata)).await {
@@ -99,18 +169,51 @@ fn spawn_reload_scheduler(
                     let count = new_store.len();
                     store.swap(new_store);
 
-                    let mut metadata = reload_state.metadata.write().expect("RwLock poisoned");
-                    *metadata = new_metadata;
+                    let mut guard = reload_state.metadata.write().expect("RwLock poisoned");
+                    *guard = new_metadata;
 
+                    failures.reset();
                     info!(uuid_count = count, "Store reloaded successfully");
                 }
                 Ok(None) => {
+                    failures.reset();
                     info!("Source unchanged, skipping reload");
                 }
-                Err(e) => {
-                    error!(error = %e, "Failed to reload store, keeping existing data");
-                }
+                Err(e) => match failures.record() {
+                    FailureResponse::Backoff(backoff) => {
+                        error!(
+                            error = %e,
+                            consecutive_failures = failures.count(),
+                            next_retry_secs = backoff.as_secs(),
+                            "Failed to reload store, keeping existing data"
+                        );
+                        tokio::time::sleep(backoff).await;
+                        continue;
+                    }
+                    FailureResponse::MaxExceeded(action) => {
+                        error!(
+                            error = %e,
+                            consecutive_failures = failures.count(),
+                            "Max reload failures exceeded"
+                        );
+                        match action {
+                            FailureAction::Shutdown => {
+                                error!("Shutting down due to reload failures");
+                                std::process::exit(1);
+                            }
+                            FailureAction::Clear => {
+                                error!("Clearing store due to reload failures");
+                                let empty = occlusion::build_store(vec![])
+                                    .expect("Failed to build empty store");
+                                store.swap(empty);
+                                failures.reset();
+                            }
+                        }
+                    }
+                },
             }
+
+            tokio::time::sleep(base_interval).await;
         }
     });
 }
@@ -143,7 +246,13 @@ async fn rocket() -> _ {
             interval_mins = args.reload_interval,
             "Starting reload scheduler"
         );
-        spawn_reload_scheduler(store.clone(), reload_state.clone(), args.reload_interval);
+        spawn_reload_scheduler(
+            store.clone(),
+            reload_state.clone(),
+            args.reload_interval,
+            args.max_reload_failures,
+            args.on_max_failures,
+        );
     }
 
     info!("Starting occlusion server");

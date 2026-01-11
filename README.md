@@ -102,6 +102,52 @@ RUST_LOG=info,rocket=off cargo run --release --bin server -- data.csv
 cargo run --release --bin server -- data.csv --json-logs
 ```
 
+## Auto-Reload
+
+The server can automatically reload data from the source at a configurable interval:
+
+```bash
+# Reload every 5 minutes
+cargo run --release --bin server -- data.csv --reload-interval 5
+
+# Disable auto-reload
+cargo run --release --bin server -- data.csv --reload-interval 0
+```
+
+Default is 60 minutes. The server checks file modification time (for files) or ETag/Last-Modified headers (for URLs) and only reloads when the source has changed.
+
+### Failure Handling
+
+On reload failure, the server uses exponential backoff (5s, 10s, 20s, ... up to 5 minutes) before retrying. You can configure a maximum number of consecutive failures and what action to take:
+
+```bash
+# Shut down after 10 consecutive failures (default action)
+cargo run --release --bin server -- https://example.com/data.csv \
+    --max-reload-failures 10 \
+    --on-max-failures shutdown
+
+# Clear the store (return empty results) after 10 failures, keep retrying
+cargo run --release --bin server -- https://example.com/data.csv \
+    --max-reload-failures 10 \
+    --on-max-failures clear
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--reload-interval` | 60 | Minutes between reload checks (0 = disabled) |
+| `--max-reload-failures` | 0 | Max consecutive failures before action (0 = unlimited) |
+| `--on-max-failures` | shutdown | Action when max exceeded: `shutdown` or `clear` |
+
+Environment variables: `OCCLUSION_RELOAD_INTERVAL`, `OCCLUSION_MAX_RELOAD_FAILURES`, `OCCLUSION_ON_MAX_FAILURES`
+
+### HTTP Timeout
+
+For URL sources, the HTTP request timeout defaults to 30 seconds. Configure via environment variable:
+
+```bash
+OCCLUSION_HTTP_TIMEOUT=60 cargo run --release --bin server -- https://example.com/data.csv
+```
+
 ## Development
 
 ```bash
