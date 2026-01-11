@@ -1277,7 +1277,6 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "rand 0.9.2",
- "rand_chacha 0.9.0",
  "rustc-hash",
  "tempfile",
  "thiserror 2.0.17",

@@ -21,14 +21,13 @@
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use occlusion::{FullHashStore, HashMapStore, HybridAuthStore, Store, VecStore};
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::hint::black_box;
 use uuid::Uuid;
 
 // Helper to generate deterministic random UUIDs using a seeded RNG
 fn generate_uuids(count: usize) -> Vec<Uuid> {
-    let mut rng = ChaCha8Rng::seed_from_u64(12345); // Fixed seed for reproducibility
+    let mut rng = StdRng::seed_from_u64(12345); // Fixed seed for reproducibility
     (0..count)
         .map(|_| {
             let bytes: [u8; 16] = rng.random();

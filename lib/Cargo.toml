@@ -25,7 +25,6 @@ uuid = { workspace = true }
 [dev-dependencies]
 criterion = "0.8"
 rand = "0.9"
-rand_chacha = "0.9"
 tempfile = "3.24.0"
 
 [[bench]]
