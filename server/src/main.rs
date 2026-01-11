@@ -56,7 +56,13 @@ struct Args {
     json_logs: bool,
 }
 
-#[cfg(feature = "static-url")]
+#[cfg(all(feature = "static-url", debug_assertions))]
+const STATIC_DATA_SOURCE: &str = match option_env!("OCCLUSION_STATIC_URL") {
+    Some(url) => url,
+    None => "https://example.com/data.csv",
+};
+
+#[cfg(all(feature = "static-url", not(debug_assertions)))]
 const STATIC_DATA_SOURCE: &str = env!("OCCLUSION_STATIC_URL");
 
 /// Initialize tracing subscriber for structured logging
