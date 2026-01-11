@@ -100,9 +100,10 @@ async fn load_file(
     let new_metadata = SourceMetadata::from_file(&path)?;
 
     if let Some(old) = old_metadata
-        && !old.has_changed(&new_metadata) {
-            return Ok(None);
-        }
+        && !old.has_changed(&new_metadata)
+    {
+        return Ok(None);
+    }
 
     let content = tokio::task::spawn_blocking(move || std::fs::read(path))
         .await
