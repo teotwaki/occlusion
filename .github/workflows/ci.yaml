@@ -6,7 +6,7 @@ on:
 
 jobs:
   test:
-    name: Test
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,14 +25,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run library tests
-        run: cargo test -p occlusion
-
-      - name: Run server tests
-        run: cargo test -p server
-
-      - name: Run tests with all stores
-        run: cargo test -p occlusion --features bench
+      - name: Run tests
+        run: cargo test --all-features
 
   lint:
     name: Lint
