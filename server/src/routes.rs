@@ -9,7 +9,6 @@ use rocket::serde::json::Json;
 #[post("/api/v1/check", data = "<request>")]
 pub fn check(store: &State<SwappableStore>, request: Json<CheckRequest>) -> Json<CheckResponse> {
     let is_visible = store.is_visible(&request.object, request.visibility_mask);
-
     Json(CheckResponse {
         object: request.object,
         is_visible,

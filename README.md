@@ -40,6 +40,17 @@ cargo run --release --bin server --features hybrid -- data.csv
 
 Run `cargo bench -p occlusion --features bench` for performance comparisons.
 
+## Static URL
+
+Bake the data source URL into the binary at compile time:
+
+```bash
+OCCLUSION_STATIC_URL="https://example.com/data.csv" \
+    cargo build --release --bin server --features static-url
+```
+
+The resulting binary requires no arguments and loads data from the compiled-in URL.
+
 ## Data Format
 
 CSV with header:
@@ -74,6 +85,21 @@ docker build --build-arg FEATURES="hybrid" -t occlusion .
 
 # Run
 docker run -p 8000:8000 -v ./data.csv:/app/data.csv occlusion /app/data.csv
+```
+
+## Logging
+
+The server uses structured logging via `tracing`. Control log levels with `RUST_LOG`:
+
+```bash
+# Default (info level, includes Rocket startup logs)
+cargo run --release --bin server -- data.csv
+
+# Suppress Rocket's logs
+RUST_LOG=info,rocket=off cargo run --release --bin server -- data.csv
+
+# JSON output for production
+cargo run --release --bin server -- data.csv --json-logs
 ```
 
 ## Development

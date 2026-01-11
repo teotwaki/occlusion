@@ -25,6 +25,9 @@ vec = ["occlusion/vec"]
 hybrid = ["occlusion/hybrid"]
 fullhash = ["occlusion/fullhash"]
 
+# Bake data source URL at compile time (set OCCLUSION_STATIC_URL env var)
+static-url = []
+
 [dependencies]
 occlusion = { path = "../lib" }
 

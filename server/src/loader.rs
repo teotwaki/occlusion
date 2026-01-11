@@ -2,11 +2,21 @@
 
 use crate::error::{LoadError, Result};
 use crate::source::{DataSource, SourceMetadata};
-use occlusion::ActiveStore;
+use occlusion::{ActiveStore, Store};
 use serde::Deserialize;
 use std::io::{Cursor, Read};
 use std::path::Path;
+use std::sync::LazyLock;
+use std::time::Instant;
+use tracing::info;
 use uuid::Uuid;
+
+static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .user_agent(concat!("occlusion/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .expect("Failed to build HTTP client")
+});
 
 #[derive(Debug, Deserialize)]
 struct CsvRecord {
@@ -16,6 +26,8 @@ struct CsvRecord {
 
 /// Core CSV parsing from any reader.
 fn load_entries_from_reader<R: Read>(reader: R) -> Result<Vec<(Uuid, u8)>> {
+    let start = Instant::now();
+
     let mut csv_reader = csv::ReaderBuilder::new()
         .has_headers(true)
         .from_reader(reader);
@@ -33,6 +45,12 @@ fn load_entries_from_reader<R: Read>(reader: R) -> Result<Vec<(Uuid, u8)>> {
         entries.push((uuid, record.visibility_level));
     }
 
+    info!(
+        entries = entries.len(),
+        elapsed_ms = start.elapsed().as_millis() as u64,
+        "CSV parsed"
+    );
+
     Ok(entries)
 }
 
@@ -48,7 +66,15 @@ pub async fn load_from_source(source: &DataSource) -> Result<(ActiveStore, Sourc
         DataSource::File(path) => {
             let metadata = SourceMetadata::from_file(path)?;
             let entries = load_entries_from_file(path)?;
+
+            let start = Instant::now();
             let store = occlusion::build_store(entries)?;
+            info!(
+                uuid_count = store.len(),
+                elapsed_ms = start.elapsed().as_millis() as u64,
+                "store built"
+            );
+
             Ok((store, metadata))
         }
         DataSource::Url(url) => {
@@ -74,7 +100,15 @@ pub async fn reload_if_changed(
                 return Ok(None);
             }
             let entries = load_entries_from_file(path)?;
+
+            let start = Instant::now();
             let store = occlusion::build_store(entries)?;
+            info!(
+                uuid_count = store.len(),
+                elapsed_ms = start.elapsed().as_millis() as u64,
+                "store built"
+            );
+
             Ok(Some((store, new_metadata)))
         }
         DataSource::Url(url) => load_from_url(url, Some(old_metadata)).await,
@@ -104,8 +138,7 @@ async fn load_from_url(
     url: &str,
     old_metadata: Option<&SourceMetadata>,
 ) -> Result<Option<(ActiveStore, SourceMetadata)>> {
-    let client = reqwest::Client::new();
-    let mut request = client.get(url);
+    let mut request = HTTP_CLIENT.get(url);
 
     if let Some(meta) = old_metadata {
         if let Some(etag) = &meta.etag {
@@ -116,6 +149,7 @@ async fn load_from_url(
         }
     }
 
+    let fetch_start = Instant::now();
     let response = request.send().await?;
 
     if response.status() == reqwest::StatusCode::NOT_MODIFIED {
@@ -131,8 +165,20 @@ async fn load_from_url(
 
     let metadata = extract_metadata_from_headers(response.headers());
     let text = response.text().await?;
+    info!(
+        elapsed_ms = fetch_start.elapsed().as_millis() as u64,
+        "HTTP fetch completed"
+    );
+
     let entries = load_entries_from_reader(Cursor::new(text))?;
+
+    let start = Instant::now();
     let store = occlusion::build_store(entries)?;
+    info!(
+        uuid_count = store.len(),
+        elapsed_ms = start.elapsed().as_millis() as u64,
+        "store built"
+    );
 
     Ok(Some((store, metadata)))
 }

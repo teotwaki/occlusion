@@ -6,6 +6,7 @@
 extern crate rocket;
 
 pub mod error;
+pub mod fairing;
 pub mod loader;
 pub mod models;
 pub mod routes;

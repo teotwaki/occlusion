@@ -6,6 +6,7 @@ use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;
 use server::ReloadState;
 use server::error::Result;
+use server::fairing::RequestTimer;
 use server::loader::{load_from_source, reload_if_changed};
 use server::routes;
 use server::source::{DataSource, SourceMetadata};
@@ -20,17 +21,21 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[command(version, about, long_about = None)]
 struct Args {
     /// Path to CSV file or URL (http:// or https://)
+    #[cfg(not(feature = "static-url"))]
     #[arg(value_name = "DATA_SOURCE", env = "OCCLUSION_DATA_SOURCE")]
     data_source: String,
 
     /// Reload interval in minutes (0 = no auto-reload)
-    #[arg(long, default_value = "0", env = "OCCLUSION_RELOAD_INTERVAL")]
+    #[arg(long, default_value = "60", env = "OCCLUSION_RELOAD_INTERVAL")]
     reload_interval: u64,
 
     /// Output logs as JSON
     #[arg(long, env = "OCCLUSION_JSON_LOGS")]
     json_logs: bool,
 }
+
+#[cfg(feature = "static-url")]
+const STATIC_DATA_SOURCE: &str = env!("OCCLUSION_STATIC_URL");
 
 /// Initialize tracing subscriber for structured logging
 fn init_tracing(json: bool) {
@@ -51,7 +56,7 @@ fn init_tracing(json: bool) {
 }
 
 /// Load the store from the data source (async for URL support)
-async fn load_store_async(source: &DataSource) -> Result<(SwappableStore, SourceMetadata)> {
+async fn load_store(source: &DataSource) -> Result<(SwappableStore, SourceMetadata)> {
     info!(source = %source, "Loading authorization store");
 
     let (store, metadata) = load_from_source(source).await?;
@@ -109,9 +114,12 @@ async fn rocket() -> _ {
     let args = Args::parse();
     init_tracing(args.json_logs);
 
+    #[cfg(feature = "static-url")]
+    let source = DataSource::parse(STATIC_DATA_SOURCE);
+    #[cfg(not(feature = "static-url"))]
     let source = DataSource::parse(&args.data_source);
 
-    let (store, metadata) = match load_store_async(&source).await {
+    let (store, metadata) = match load_store(&source).await {
         Ok(result) => result,
         Err(e) => {
             error!(error = %e, "Failed to start server");
@@ -132,11 +140,14 @@ async fn rocket() -> _ {
         spawn_reload_scheduler(store.clone(), reload_state.clone(), args.reload_interval);
     }
 
-    info!("Starting Rocket server");
+    info!("Starting occlusion server");
 
-    let figment = Figment::from(rocket::Config::default()).merge(("cli_colors", false));
+    let figment = Figment::from(rocket::Config::default())
+        .merge(("cli_colors", false))
+        .merge(("ident", concat!("occlusion/", env!("CARGO_PKG_VERSION"))));
 
     rocket::custom(figment)
+        .attach(RequestTimer)
         .manage(store)
         .mount(
             "/",
