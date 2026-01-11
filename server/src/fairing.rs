@@ -1,9 +1,9 @@
 //! Request timing fairing for logging response times.
 
 use rocket::{
+    Data, Request, Response,
     fairing::{Fairing, Info, Kind},
     http::Status,
-    Data, Request, Response,
 };
 use std::time::Instant;
 use tracing::info;

@@ -72,10 +72,12 @@ impl crate::Store for HashMapStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        self.map.values().fold(HashMap::default(), |mut acc, &level| {
-            *acc.entry(level).or_insert(0) += 1;
-            acc
-        })
+        self.map
+            .values()
+            .fold(HashMap::default(), |mut acc, &level| {
+                *acc.entry(level).or_insert(0) += 1;
+                acc
+            })
     }
 }
 

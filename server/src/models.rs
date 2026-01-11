@@ -72,4 +72,3 @@ pub struct OpaBatchVisibleInput {
     pub objects: Vec<Uuid>,
     pub visibility_mask: u8,
 }
-

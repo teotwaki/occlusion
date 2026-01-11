@@ -1,6 +1,6 @@
 use crate::models::*;
 use occlusion::{Store, SwappableStore};
-use rocket::{serde::json::Json, State};
+use rocket::{State, serde::json::Json};
 
 /// Check if a single object is visible under the given visibility mask
 ///
@@ -79,9 +79,10 @@ pub fn opa_visible_batch(
     request: Json<OpaRequest<OpaBatchVisibleInput>>,
 ) -> Json<OpaResponse<bool>> {
     let all_visible = store.check_batch(&request.input.objects, request.input.visibility_mask);
-    Json(OpaResponse { result: all_visible })
+    Json(OpaResponse {
+        result: all_visible,
+    })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -320,5 +321,4 @@ mod tests {
         let body: OpaResponse<bool> = response.into_json().unwrap();
         assert!(body.result);
     }
-
 }
