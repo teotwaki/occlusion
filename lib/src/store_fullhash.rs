@@ -84,24 +84,14 @@ impl std::fmt::Display for DistributionStats {
 
 impl crate::Store for FullHashStore {
     #[inline]
-    fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
-        self.by_level
-            .iter()
-            .find_map(|(&level, set)| set.contains(uuid).then_some(level))
-    }
-
-    #[inline]
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
         self.by_level
             .range(..=mask)
             .any(|(_, set)| set.contains(uuid))
     }
 
-    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
-        uuids
-            .iter()
-            .map(|uuid| self.is_visible(uuid, mask))
-            .collect()
+    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> bool {
+        uuids.iter().all(|uuid| self.is_visible(uuid, mask))
     }
 
     #[inline]
@@ -161,22 +151,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_visibility() {
-        let uuid0 = uuid_from_u128(1);
-        let uuid5 = uuid_from_u128(2);
-        let uuid10 = uuid_from_u128(3);
-        let uuid_missing = uuid_from_u128(999);
-
-        let entries = vec![(uuid0, 0), (uuid5, 5), (uuid10, 10)];
-        let store = FullHashStore::new(entries).unwrap();
-
-        assert_eq!(store.get_visibility(&uuid0), Some(0));
-        assert_eq!(store.get_visibility(&uuid5), Some(5));
-        assert_eq!(store.get_visibility(&uuid10), Some(10));
-        assert_eq!(store.get_visibility(&uuid_missing), None);
-    }
-
-    #[test]
     fn test_is_visible_level_0() {
         let uuid = uuid_from_u128(1);
         let entries = vec![(uuid, 0)];
@@ -218,8 +192,12 @@ mod tests {
         let entries = vec![(uuid1, 0), (uuid2, 10), (uuid3, 15)];
         let store = FullHashStore::new(entries).unwrap();
 
-        let results = store.check_batch(&[uuid1, uuid2, uuid3], 10);
-        assert_eq!(results, vec![true, true, false]);
+        // All visible at mask 15
+        assert!(store.check_batch(&[uuid1, uuid2, uuid3], 15));
+        // Not all visible at mask 10 (uuid3 has level 15)
+        assert!(!store.check_batch(&[uuid1, uuid2, uuid3], 10));
+        // Subset that is all visible
+        assert!(store.check_batch(&[uuid1, uuid2], 10));
     }
 
     #[test]

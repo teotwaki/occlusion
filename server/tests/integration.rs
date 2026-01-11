@@ -25,7 +25,7 @@ struct CheckResponse {
 
 #[derive(Debug, Deserialize)]
 struct BatchCheckResponse {
-    results: Vec<CheckResponse>,
+    all_visible: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,7 +73,6 @@ fn build_test_rocket(csv_path: &str) -> rocket::Rocket<rocket::Build> {
             server::routes::stats,
             server::routes::opa_visible,
             server::routes::opa_visible_batch,
-            server::routes::opa_level,
         ],
     )
 }
@@ -110,7 +109,7 @@ fn test_server_with_csv_file() {
     let body: CheckResponse = response.into_json().unwrap();
     assert!(body.is_visible); // Level 5 <= mask 5
 
-    // Test batch check endpoint
+    // Test batch check endpoint - not all visible at mask 5
     let response = client
         .post("/api/v1/check/batch")
         .header(ContentType::JSON)
@@ -121,10 +120,20 @@ fn test_server_with_csv_file() {
         .dispatch();
     assert_eq!(response.status(), Status::Ok);
     let body: BatchCheckResponse = response.into_json().unwrap();
-    assert_eq!(body.results.len(), 3);
-    assert!(body.results[0].is_visible); // Level 0 <= 5
-    assert!(body.results[1].is_visible); // Level 5 <= 5
-    assert!(!body.results[2].is_visible); // Level 10 > 5
+    assert!(!body.all_visible); // uuid3 (level 10) > mask 5
+
+    // Test batch check endpoint - all visible at mask 10
+    let response = client
+        .post("/api/v1/check/batch")
+        .header(ContentType::JSON)
+        .body(format!(
+            r#"{{"objects": ["{}", "{}", "{}"], "visibility_mask": 10}}"#,
+            uuid1, uuid2, uuid3
+        ))
+        .dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let body: BatchCheckResponse = response.into_json().unwrap();
+    assert!(body.all_visible);
 
     // Test stats endpoint
     let response = client.get("/api/v1/stats").dispatch();
@@ -157,17 +166,7 @@ fn test_opa_endpoints_with_csv_file() {
     let body: OpaResponse<bool> = response.into_json().unwrap();
     assert!(body.result);
 
-    // Test OPA level endpoint
-    let response = client
-        .post("/v1/data/occlusion/level")
-        .header(ContentType::JSON)
-        .body(format!(r#"{{"input": {{"object": "{}"}}}}"#, uuid2))
-        .dispatch();
-    assert_eq!(response.status(), Status::Ok);
-    let body: OpaResponse<Option<u8>> = response.into_json().unwrap();
-    assert_eq!(body.result, Some(15));
-
-    // Test OPA batch endpoint
+    // Test OPA batch endpoint - not all visible (uuid2 level 15 > mask 10)
     let response = client
         .post("/v1/data/occlusion/visible_batch")
         .header(ContentType::JSON)
@@ -177,9 +176,21 @@ fn test_opa_endpoints_with_csv_file() {
         ))
         .dispatch();
     assert_eq!(response.status(), Status::Ok);
-    let body: OpaResponse<HashMap<Uuid, bool>> = response.into_json().unwrap();
-    assert_eq!(body.result.get(&uuid1), Some(&true));
-    assert_eq!(body.result.get(&uuid2), Some(&false));
+    let body: OpaResponse<bool> = response.into_json().unwrap();
+    assert!(!body.result);
+
+    // Test OPA batch endpoint - all visible at mask 15
+    let response = client
+        .post("/v1/data/occlusion/visible_batch")
+        .header(ContentType::JSON)
+        .body(format!(
+            r#"{{"input": {{"objects": ["{}", "{}"], "visibility_mask": 15}}}}"#,
+            uuid1, uuid2
+        ))
+        .dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let body: OpaResponse<bool> = response.into_json().unwrap();
+    assert!(body.result);
 }
 
 #[test]

@@ -106,20 +106,6 @@ impl std::fmt::Display for DistributionStats {
 
 impl crate::Store for HybridAuthStore {
     #[inline]
-    fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
-        // Fast path: check level 0 first
-        if self.level_0.contains(uuid) {
-            return Some(0);
-        }
-
-        // Slow path: binary search higher levels
-        self.higher_levels
-            .binary_search_by_key(uuid, |(u, _)| *u)
-            .ok()
-            .map(|idx| self.higher_levels[idx].1)
-    }
-
-    #[inline]
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
         // Fast path: check level 0 first (90% probability)
         // Since level 0 is always <= any mask (u8), we just check presence
@@ -140,11 +126,8 @@ impl crate::Store for HybridAuthStore {
             .unwrap_or(false)
     }
 
-    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
-        uuids
-            .iter()
-            .map(|uuid| self.is_visible(uuid, mask))
-            .collect()
+    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> bool {
+        uuids.iter().all(|uuid| self.is_visible(uuid, mask))
     }
 
     #[inline]
@@ -209,22 +192,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_visibility() {
-        let uuid0 = uuid_from_u128(1);
-        let uuid5 = uuid_from_u128(2);
-        let uuid10 = uuid_from_u128(3);
-        let uuid_missing = uuid_from_u128(999);
-
-        let entries = vec![(uuid0, 0), (uuid5, 5), (uuid10, 10)];
-        let store = HybridAuthStore::new(entries).unwrap();
-
-        assert_eq!(store.get_visibility(&uuid0), Some(0));
-        assert_eq!(store.get_visibility(&uuid5), Some(5));
-        assert_eq!(store.get_visibility(&uuid10), Some(10));
-        assert_eq!(store.get_visibility(&uuid_missing), None);
-    }
-
-    #[test]
     fn test_is_visible_level_0() {
         let uuid = uuid_from_u128(1);
         let entries = vec![(uuid, 0)];
@@ -266,8 +233,12 @@ mod tests {
         let entries = vec![(uuid1, 0), (uuid2, 10), (uuid3, 15)];
         let store = HybridAuthStore::new(entries).unwrap();
 
-        let results = store.check_batch(&[uuid1, uuid2, uuid3], 10);
-        assert_eq!(results, vec![true, true, false]);
+        // All visible at mask 15
+        assert!(store.check_batch(&[uuid1, uuid2, uuid3], 15));
+        // Not all visible at mask 10 (uuid3 has level 15)
+        assert!(!store.check_batch(&[uuid1, uuid2, uuid3], 10));
+        // Subset that is all visible
+        assert!(store.check_batch(&[uuid1, uuid2], 10));
     }
 
     #[test]

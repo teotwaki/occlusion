@@ -26,7 +26,7 @@ pub struct BatchCheckRequest {
 /// Response for batch object visibility check
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BatchCheckResponse {
-    pub results: Vec<CheckResponse>,
+    pub all_visible: bool,
 }
 
 /// Health check response
@@ -73,8 +73,3 @@ pub struct OpaBatchVisibleInput {
     pub visibility_mask: u8,
 }
 
-/// Input for OPA level query
-#[derive(Debug, Deserialize, Serialize)]
-pub struct OpaLevelInput {
-    pub object: Uuid,
-}

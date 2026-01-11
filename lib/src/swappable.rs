@@ -56,18 +56,12 @@ impl SwappableStore {
 
 impl Store for SwappableStore {
     #[inline]
-    fn get_visibility(&self, uuid: &Uuid) -> Option<u8> {
-        let guard = self.inner.read().expect("RwLock poisoned");
-        guard.get_visibility(uuid)
-    }
-
-    #[inline]
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
         let guard = self.inner.read().expect("RwLock poisoned");
         guard.is_visible(uuid, mask)
     }
 
-    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool> {
+    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> bool {
         let guard = self.inner.read().expect("RwLock poisoned");
         guard.check_batch(uuids, mask)
     }
@@ -126,9 +120,8 @@ mod tests {
 
         assert_eq!(store.len(), 3);
         assert!(!store.is_empty());
-        assert_eq!(store.get_visibility(&Uuid::from_u128(1)), Some(0));
-        assert_eq!(store.get_visibility(&Uuid::from_u128(2)), Some(5));
         assert!(store.is_visible(&Uuid::from_u128(1), 0));
+        assert!(store.is_visible(&Uuid::from_u128(2), 5));
         assert!(!store.is_visible(&Uuid::from_u128(3), 5)); // level 10 > mask 5
     }
 
@@ -144,8 +137,8 @@ mod tests {
         store.swap(new_store);
 
         assert_eq!(store.len(), 2);
-        assert_eq!(store.get_visibility(&Uuid::from_u128(1)), None); // Old UUID gone
-        assert_eq!(store.get_visibility(&Uuid::from_u128(100)), Some(0)); // New UUID present
+        assert!(!store.is_visible(&Uuid::from_u128(1), 255)); // Old UUID gone
+        assert!(store.is_visible(&Uuid::from_u128(100), 0)); // New UUID present
     }
 
     #[test]
@@ -153,9 +146,11 @@ mod tests {
         let store = SwappableStore::new(create_test_store());
 
         let uuids = vec![Uuid::from_u128(1), Uuid::from_u128(2), Uuid::from_u128(3)];
-        let results = store.check_batch(&uuids, 5);
 
-        assert_eq!(results, vec![true, true, false]); // 0<=5, 5<=5, 10>5
+        // All visible at mask 10
+        assert!(store.check_batch(&uuids, 10));
+        // Not all visible at mask 5 (uuid3 has level 10)
+        assert!(!store.check_batch(&uuids, 5));
     }
 
     #[test]
@@ -172,6 +167,6 @@ mod tests {
         store1.swap(new_store);
 
         assert_eq!(store2.len(), 1);
-        assert_eq!(store2.get_visibility(&Uuid::from_u128(999)), Some(0));
+        assert!(store2.is_visible(&Uuid::from_u128(999), 0));
     }
 }

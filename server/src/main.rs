@@ -149,7 +149,6 @@ async fn rocket() -> _ {
                 // OPA-compatible API
                 routes::opa_visible,
                 routes::opa_visible_batch,
-                routes::opa_level,
             ],
         )
 }

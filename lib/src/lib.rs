@@ -103,9 +103,8 @@ use uuid::Uuid;
 ///
 /// This allows the server to be generic over store type.
 pub trait Store: Send + Sync {
-    fn get_visibility(&self, uuid: &Uuid) -> Option<u8>;
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool;
-    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> Vec<bool>;
+    fn check_batch(&self, uuids: &[Uuid], mask: u8) -> bool;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool;
     fn visibility_distribution(&self) -> HashMap<u8, usize>;

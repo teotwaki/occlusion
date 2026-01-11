@@ -39,25 +39,17 @@ impl VecStore {
 }
 
 impl crate::Store for VecStore {
-    fn get_visibility(&self, uuid: &uuid::Uuid) -> Option<u8> {
+    #[inline]
+    fn is_visible(&self, uuid: &uuid::Uuid, mask: u8) -> bool {
         self.entries
             .binary_search_by_key(uuid, |(u, _)| *u)
             .ok()
-            .map(|idx| self.entries[idx].1)
-    }
-
-    #[inline]
-    fn is_visible(&self, uuid: &uuid::Uuid, mask: u8) -> bool {
-        self.get_visibility(uuid)
-            .map(|level| level <= mask)
+            .map(|idx| self.entries[idx].1 <= mask)
             .unwrap_or(false)
     }
 
-    fn check_batch(&self, uuids: &[uuid::Uuid], mask: u8) -> Vec<bool> {
-        uuids
-            .iter()
-            .map(|uuid| self.is_visible(uuid, mask))
-            .collect()
+    fn check_batch(&self, uuids: &[uuid::Uuid], mask: u8) -> bool {
+        uuids.iter().all(|uuid| self.is_visible(uuid, mask))
     }
 
     #[inline]
@@ -109,20 +101,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_visibility() {
-        let uuid1 = uuid_from_u128(1);
-        let uuid2 = uuid_from_u128(2);
-        let uuid3 = uuid_from_u128(3);
-
-        let entries = vec![(uuid1, 5), (uuid2, 10)];
-        let store = VecStore::new(entries).unwrap();
-
-        assert_eq!(store.get_visibility(&uuid1), Some(5));
-        assert_eq!(store.get_visibility(&uuid2), Some(10));
-        assert_eq!(store.get_visibility(&uuid3), None);
-    }
-
-    #[test]
     fn test_is_visible() {
         let uuid = uuid_from_u128(1);
         let entries = vec![(uuid, 8)];
@@ -145,8 +123,12 @@ mod tests {
         let entries = vec![(uuid1, 5), (uuid2, 10), (uuid3, 15)];
         let store = VecStore::new(entries).unwrap();
 
-        let results = store.check_batch(&[uuid1, uuid2, uuid3], 10);
-        assert_eq!(results, vec![true, true, false]);
+        // All visible at mask 15
+        assert!(store.check_batch(&[uuid1, uuid2, uuid3], 15));
+        // Not all visible at mask 10 (uuid3 has level 15)
+        assert!(!store.check_batch(&[uuid1, uuid2, uuid3], 10));
+        // Subset that is all visible
+        assert!(store.check_batch(&[uuid1, uuid2], 10));
     }
 
     #[test]

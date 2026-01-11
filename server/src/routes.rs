@@ -2,7 +2,6 @@ use crate::models::*;
 use occlusion::{Store, SwappableStore};
 use rocket::State;
 use rocket::serde::json::Json;
-use std::collections::HashMap;
 
 /// Check if a single object is visible under the given visibility mask
 ///
@@ -25,19 +24,8 @@ pub fn check_batch(
     store: &State<SwappableStore>,
     request: Json<BatchCheckRequest>,
 ) -> Json<BatchCheckResponse> {
-    let results = request
-        .objects
-        .iter()
-        .map(|object| {
-            let is_visible = store.is_visible(object, request.visibility_mask);
-            CheckResponse {
-                object: *object,
-                is_visible,
-            }
-        })
-        .collect();
-
-    Json(BatchCheckResponse { results })
+    let all_visible = store.check_batch(&request.objects, request.visibility_mask);
+    Json(BatchCheckResponse { all_visible })
 }
 
 /// Health check endpoint
@@ -86,40 +74,16 @@ pub fn opa_visible(
 /// POST /v1/data/occlusion/visible_batch
 ///
 /// Request: `{"input": {"objects": ["uuid1", "uuid2"], "visibility_mask": 10}}`
-/// Response: `{"result": {"uuid1": true, "uuid2": false}}`
+/// Response: `{"result": true}` (true if all objects are visible)
 #[post("/v1/data/occlusion/visible_batch", data = "<request>")]
 pub fn opa_visible_batch(
     store: &State<SwappableStore>,
     request: Json<OpaRequest<OpaBatchVisibleInput>>,
-) -> Json<OpaResponse<HashMap<uuid::Uuid, bool>>> {
-    let results: HashMap<_, _> = request
-        .input
-        .objects
-        .iter()
-        .map(|object| {
-            (
-                *object,
-                store.is_visible(object, request.input.visibility_mask),
-            )
-        })
-        .collect();
-    Json(OpaResponse { result: results })
+) -> Json<OpaResponse<bool>> {
+    let all_visible = store.check_batch(&request.input.objects, request.input.visibility_mask);
+    Json(OpaResponse { result: all_visible })
 }
 
-/// OPA-compatible visibility level query
-///
-/// POST /v1/data/occlusion/level
-///
-/// Request: `{"input": {"object": "uuid"}}`
-/// Response: `{"result": 8}` or `{"result": null}` if not found
-#[post("/v1/data/occlusion/level", data = "<request>")]
-pub fn opa_level(
-    store: &State<SwappableStore>,
-    request: Json<OpaRequest<OpaLevelInput>>,
-) -> Json<OpaResponse<Option<u8>>> {
-    let level = store.get_visibility(&request.input.object);
-    Json(OpaResponse { result: level })
-}
 
 #[cfg(test)]
 mod tests {
@@ -161,7 +125,6 @@ mod tests {
                 stats,
                 opa_visible,
                 opa_visible_batch,
-                opa_level,
             ],
         );
 
@@ -224,6 +187,8 @@ mod tests {
     #[test]
     fn test_check_batch() {
         let client = create_test_client();
+
+        // Not all visible at mask 10 (uuid4 has level 15)
         let response = client
             .post("/api/v1/check/batch")
             .header(ContentType::JSON)
@@ -234,13 +199,24 @@ mod tests {
                 uuid_str(4)
             ))
             .dispatch();
-
         assert_eq!(response.status(), Status::Ok);
         let body: BatchCheckResponse = response.into_json().unwrap();
-        assert_eq!(body.results.len(), 3);
-        assert!(body.results[0].is_visible); // Level 0 <= 10
-        assert!(body.results[1].is_visible); // Level 5 <= 10
-        assert!(!body.results[2].is_visible); // Level 15 > 10
+        assert!(!body.all_visible);
+
+        // All visible at mask 15
+        let response = client
+            .post("/api/v1/check/batch")
+            .header(ContentType::JSON)
+            .body(format!(
+                r#"{{"objects": ["{}", "{}", "{}"], "visibility_mask": 15}}"#,
+                uuid_str(1),
+                uuid_str(2),
+                uuid_str(4)
+            ))
+            .dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        let body: BatchCheckResponse = response.into_json().unwrap();
+        assert!(body.all_visible);
     }
 
     #[test]
@@ -315,6 +291,8 @@ mod tests {
     #[test]
     fn test_opa_visible_batch() {
         let client = create_test_client();
+
+        // Not all visible at mask 10 (uuid4 has level 15)
         let response = client
             .post("/v1/data/occlusion/visible_batch")
             .header(ContentType::JSON)
@@ -325,40 +303,24 @@ mod tests {
                 uuid_str(4)
             ))
             .dispatch();
-
         assert_eq!(response.status(), Status::Ok);
-        let body: OpaResponse<HashMap<Uuid, bool>> = response.into_json().unwrap();
-        assert_eq!(body.result.len(), 3);
-        assert_eq!(body.result.get(&Uuid::from_u128(1)), Some(&true)); // Level 0
-        assert_eq!(body.result.get(&Uuid::from_u128(2)), Some(&true)); // Level 5
-        assert_eq!(body.result.get(&Uuid::from_u128(4)), Some(&false)); // Level 15
-    }
+        let body: OpaResponse<bool> = response.into_json().unwrap();
+        assert!(!body.result);
 
-    #[test]
-    fn test_opa_level_found() {
-        let client = create_test_client();
+        // All visible at mask 15
         let response = client
-            .post("/v1/data/occlusion/level")
+            .post("/v1/data/occlusion/visible_batch")
             .header(ContentType::JSON)
-            .body(format!(r#"{{"input": {{"object": "{}"}}}}"#, uuid_str(3)))
+            .body(format!(
+                r#"{{"input": {{"objects": ["{}", "{}", "{}"], "visibility_mask": 15}}}}"#,
+                uuid_str(1),
+                uuid_str(2),
+                uuid_str(4)
+            ))
             .dispatch();
-
         assert_eq!(response.status(), Status::Ok);
-        let body: OpaResponse<Option<u8>> = response.into_json().unwrap();
-        assert_eq!(body.result, Some(10));
+        let body: OpaResponse<bool> = response.into_json().unwrap();
+        assert!(body.result);
     }
 
-    #[test]
-    fn test_opa_level_not_found() {
-        let client = create_test_client();
-        let response = client
-            .post("/v1/data/occlusion/level")
-            .header(ContentType::JSON)
-            .body(format!(r#"{{"input": {{"object": "{}"}}}}"#, uuid_str(999)))
-            .dispatch();
-
-        assert_eq!(response.status(), Status::Ok);
-        let body: OpaResponse<Option<u8>> = response.into_json().unwrap();
-        assert_eq!(body.result, None);
-    }
 }
