@@ -1,10 +1,11 @@
 //! Generate CSV test data for the occlusion server.
 
 use clap::Parser;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
-use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use rand::{rngs::StdRng, Rng, SeedableRng};
+use std::{
+    fs::File,
+    io::{self, BufWriter, Write},
+};
 use uuid::Uuid;
 
 /// Generate CSV test data for the occlusion server

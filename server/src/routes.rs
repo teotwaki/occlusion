@@ -1,7 +1,6 @@
 use crate::models::*;
 use occlusion::{Store, SwappableStore};
-use rocket::State;
-use rocket::serde::json::Json;
+use rocket::{serde::json::Json, State};
 
 /// Check if a single object is visible under the given visibility mask
 ///

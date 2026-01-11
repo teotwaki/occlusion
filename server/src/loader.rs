@@ -1,12 +1,12 @@
 //! Data loading utilities for files and URLs.
 
-use crate::error::{LoadError, Result};
-use crate::source::{DataSource, SourceMetadata};
+use crate::{
+    error::{LoadError, Result},
+    source::{DataSource, SourceMetadata},
+};
 use occlusion::{ActiveStore, Store};
 use serde::Deserialize;
-use std::path::PathBuf;
-use std::sync::LazyLock;
-use std::time::Instant;
+use std::{path::PathBuf, sync::LazyLock, time::Instant};
 use tracing::info;
 use uuid::Uuid;
 

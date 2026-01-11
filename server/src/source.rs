@@ -1,7 +1,6 @@
 //! Data source abstraction for loading store data from files or URLs.
 
-use std::path::PathBuf;
-use std::time::SystemTime;
+use std::{path::PathBuf, time::SystemTime};
 
 /// Represents a data source for loading store data.
 #[derive(Debug, Clone)]

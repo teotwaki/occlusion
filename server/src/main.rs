@@ -4,14 +4,18 @@ extern crate rocket;
 use clap::Parser;
 use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;
-use server::ReloadState;
-use server::error::Result;
-use server::fairing::RequestTimer;
-use server::loader::load;
-use server::routes;
-use server::source::{DataSource, SourceMetadata};
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use server::{
+    error::Result,
+    fairing::RequestTimer,
+    loader::load,
+    routes,
+    source::{DataSource, SourceMetadata},
+    ReloadState,
+};
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 

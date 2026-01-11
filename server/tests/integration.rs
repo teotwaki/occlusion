@@ -2,11 +2,12 @@
 //!
 //! These tests verify end-to-end behavior with real data files.
 
-use rocket::http::{ContentType, Status};
-use rocket::local::blocking::Client;
+use rocket::{
+    http::{ContentType, Status},
+    local::blocking::Client,
+};
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::io::Write;
+use std::{collections::HashMap, io::Write};
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 
