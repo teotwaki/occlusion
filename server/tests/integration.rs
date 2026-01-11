@@ -59,8 +59,9 @@ fn build_test_rocket(csv_path: &str) -> rocket::Rocket<rocket::Build> {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let (store, _metadata) = rt
-        .block_on(server::loader::load_from_source(&source))
-        .expect("Failed to load store");
+        .block_on(server::loader::load(&source, None))
+        .expect("Failed to load store")
+        .expect("Initial load should return data");
 
     let swappable = SwappableStore::new(store);
 

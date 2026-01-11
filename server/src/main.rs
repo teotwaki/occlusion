@@ -7,7 +7,7 @@ use rocket::figment::Figment;
 use server::ReloadState;
 use server::error::Result;
 use server::fairing::RequestTimer;
-use server::loader::{load_from_source, reload_if_changed};
+use server::loader::load;
 use server::routes;
 use server::source::{DataSource, SourceMetadata};
 use std::sync::{Arc, RwLock};
@@ -59,7 +59,9 @@ fn init_tracing(json: bool) {
 async fn load_store(source: &DataSource) -> Result<(SwappableStore, SourceMetadata)> {
     info!(source = %source, "Loading authorization store");
 
-    let (store, metadata) = load_from_source(source).await?;
+    let (store, metadata) = load(source, None)
+        .await?
+        .expect("Initial load should always return data");
 
     info!(uuid_count = store.len(), "Store loaded successfully");
 
@@ -88,7 +90,7 @@ fn spawn_reload_scheduler(
                 metadata.clone()
             };
 
-            match reload_if_changed(&reload_state.source, &old_metadata).await {
+            match load(&reload_state.source, Some(&old_metadata)).await {
                 Ok(Some((new_store, new_metadata))) => {
                     let count = new_store.len();
                     store.swap(new_store);
