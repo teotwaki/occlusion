@@ -235,7 +235,10 @@ fn test_visibility_boundaries() {
     let response = client
         .post("/api/v1/check")
         .header(ContentType::JSON)
-        .body(format!(r#"{{"object": "{}", "visibility_mask": 128}}"#, uuid))
+        .body(format!(
+            r#"{{"object": "{}", "visibility_mask": 128}}"#,
+            uuid
+        ))
         .dispatch();
     let body: CheckResponse = response.into_json().unwrap();
     assert!(body.is_visible); // 128 <= 128
@@ -244,7 +247,10 @@ fn test_visibility_boundaries() {
     let response = client
         .post("/api/v1/check")
         .header(ContentType::JSON)
-        .body(format!(r#"{{"object": "{}", "visibility_mask": 127}}"#, uuid))
+        .body(format!(
+            r#"{{"object": "{}", "visibility_mask": 127}}"#,
+            uuid
+        ))
         .dispatch();
     let body: CheckResponse = response.into_json().unwrap();
     assert!(!body.is_visible); // 128 > 127
@@ -253,7 +259,10 @@ fn test_visibility_boundaries() {
     let response = client
         .post("/api/v1/check")
         .header(ContentType::JSON)
-        .body(format!(r#"{{"object": "{}", "visibility_mask": 255}}"#, uuid))
+        .body(format!(
+            r#"{{"object": "{}", "visibility_mask": 255}}"#,
+            uuid
+        ))
         .dispatch();
     let body: CheckResponse = response.into_json().unwrap();
     assert!(body.is_visible); // 128 <= 255

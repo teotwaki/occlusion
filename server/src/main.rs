@@ -5,12 +5,12 @@ use clap::{Parser, ValueEnum};
 use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;
 use server::{
+    ReloadState,
     error::Result,
     fairing::RequestTimer,
     loader::load,
     routes,
     source::{DataSource, SourceMetadata},
-    ReloadState,
 };
 use std::{
     sync::{Arc, RwLock},

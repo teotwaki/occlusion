@@ -21,7 +21,7 @@
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use occlusion::{FullHashStore, HashMapStore, HybridAuthStore, Store, VecStore};
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::hint::black_box;
 use uuid::Uuid;
 

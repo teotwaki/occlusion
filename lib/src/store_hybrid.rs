@@ -55,7 +55,10 @@ impl HybridAuthStore {
             return Err(StoreError::DuplicateUuid(dup[0].0));
         }
 
-        if let Some((uuid, _)) = higher_levels.iter().find(|(uuid, _)| level_0.contains(uuid)) {
+        if let Some((uuid, _)) = higher_levels
+            .iter()
+            .find(|(uuid, _)| level_0.contains(uuid))
+        {
             return Err(StoreError::DuplicateUuid(*uuid));
         }
 
@@ -141,10 +144,13 @@ impl crate::Store for HybridAuthStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        let mut dist = self.higher_levels.iter().fold(HashMap::default(), |mut acc, (_, level)| {
-            *acc.entry(*level).or_insert(0) += 1;
-            acc
-        });
+        let mut dist = self
+            .higher_levels
+            .iter()
+            .fold(HashMap::default(), |mut acc, (_, level)| {
+                *acc.entry(*level).or_insert(0) += 1;
+                acc
+            });
         if !self.level_0.is_empty() {
             dist.insert(0, self.level_0.len());
         }

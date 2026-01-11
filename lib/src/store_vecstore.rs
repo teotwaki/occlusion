@@ -63,10 +63,12 @@ impl crate::Store for VecStore {
     }
 
     fn visibility_distribution(&self) -> HashMap<u8, usize> {
-        self.entries.iter().fold(HashMap::default(), |mut acc, (_, level)| {
-            *acc.entry(*level).or_insert(0) += 1;
-            acc
-        })
+        self.entries
+            .iter()
+            .fold(HashMap::default(), |mut acc, (_, level)| {
+                *acc.entry(*level).or_insert(0) += 1;
+                acc
+            })
     }
 }
 

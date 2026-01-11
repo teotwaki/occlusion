@@ -1,7 +1,7 @@
 //! Generate CSV test data for the occlusion server.
 
 use clap::Parser;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::{
     fs::File,
     io::{self, BufWriter, Write},
