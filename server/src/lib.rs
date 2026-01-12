@@ -1,3 +1,9 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::needless_pass_by_value)] // Rocket requires owned Json<T> for routes
+
 //! Occlusion server library.
 //!
 //! This module exposes the server components for use in integration tests.

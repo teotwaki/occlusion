@@ -44,7 +44,7 @@ impl Fairing for RequestTimer {
             method = %method,
             path = %uri,
             status = status.code,
-            elapsed_us = elapsed.as_micros() as u64,
+            elapsed_us = u64::try_from(elapsed.as_micros()).unwrap_or(u64::MAX),
             "request completed"
         );
     }

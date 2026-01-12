@@ -37,7 +37,7 @@ pub struct SwappableStore {
 }
 
 impl SwappableStore {
-    /// Create a new SwappableStore wrapping the given store.
+    /// Create a new `SwappableStore` wrapping the given store.
     pub fn new(store: ActiveStore) -> Self {
         Self {
             inner: Arc::new(RwLock::new(store)),
