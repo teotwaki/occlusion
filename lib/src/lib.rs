@@ -109,10 +109,24 @@ use uuid::Uuid;
 ///
 /// This allows the server to be generic over store type.
 pub trait Store: Send + Sync {
+    /// Check if a UUID is visible at the given visibility mask.
+    #[must_use]
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool;
+
+    /// Check if all UUIDs in the batch are visible at the given mask.
+    #[must_use]
     fn check_batch(&self, uuids: &[Uuid], mask: u8) -> bool;
+
+    /// Returns the number of UUIDs in the store.
+    #[must_use]
     fn len(&self) -> usize;
+
+    /// Returns true if the store contains no UUIDs.
+    #[must_use]
     fn is_empty(&self) -> bool;
+
+    /// Returns a map of visibility level to count of UUIDs at that level.
+    #[must_use]
     fn visibility_distribution(&self) -> HashMap<u8, usize>;
 }
 
