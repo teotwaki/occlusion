@@ -1,6 +1,7 @@
 use crate::models::*;
 use occlusion::{Store, SwappableStore};
 use rocket::{State, serde::json::Json};
+use std::borrow::Cow;
 
 /// Check if a single object is visible under the given visibility mask
 ///
@@ -32,7 +33,7 @@ pub fn check_batch(
 #[get("/health")]
 pub fn health(store: &State<SwappableStore>) -> Json<HealthResponse> {
     Json(HealthResponse {
-        status: "ok".to_string(),
+        status: Cow::Borrowed("ok"),
         uuid_count: store.len(),
     })
 }

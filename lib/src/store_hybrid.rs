@@ -1,4 +1,4 @@
-use crate::{HashMap, HashSet, Store, StoreError};
+use crate::{DistributionStats, HashMap, HashSet, Store, StoreError};
 use uuid::Uuid;
 
 /// Hybrid authorization store optimized for skewed distributions.
@@ -35,7 +35,7 @@ impl HybridAuthStore {
     /// Entries at visibility level 0 go into a HashSet, others into a sorted array.
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
-        let mut level_0: HashSet<_> = Default::default();
+        let mut level_0: HashSet<_> = HashSet::default();
         let mut higher_levels = Vec::new();
 
         // Partition by visibility level
@@ -91,25 +91,6 @@ impl HybridAuthStore {
     }
 }
 
-/// Statistics about the distribution of UUIDs across visibility levels.
-#[derive(Debug, Clone)]
-pub struct DistributionStats {
-    pub total_uuids: usize,
-    pub level_0_count: usize,
-    pub higher_levels_count: usize,
-    pub level_0_percentage: f64,
-}
-
-impl std::fmt::Display for DistributionStats {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Total: {}, Level 0: {} ({:.1}%), Higher: {}",
-            self.total_uuids, self.level_0_count, self.level_0_percentage, self.higher_levels_count
-        )
-    }
-}
-
 impl crate::Store for HybridAuthStore {
     #[inline]
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
@@ -128,8 +109,7 @@ impl crate::Store for HybridAuthStore {
         self.higher_levels
             .binary_search_by_key(uuid, |(u, _)| *u)
             .ok()
-            .map(|idx| self.higher_levels[idx].1 <= mask)
-            .unwrap_or(false)
+            .is_some_and(|idx| self.higher_levels[idx].1 <= mask)
     }
 
     fn check_batch(&self, uuids: &[Uuid], mask: u8) -> bool {
@@ -165,17 +145,13 @@ impl crate::Store for HybridAuthStore {
 mod tests {
     use super::*;
 
-    fn uuid_from_u128(n: u128) -> Uuid {
-        Uuid::from_u128(n)
-    }
-
     #[test]
     fn test_new_partitions_correctly() {
         let entries = vec![
-            (uuid_from_u128(1), 0),
-            (uuid_from_u128(2), 5),
-            (uuid_from_u128(3), 0),
-            (uuid_from_u128(4), 10),
+            (Uuid::from_u128(1), 0),
+            (Uuid::from_u128(2), 5),
+            (Uuid::from_u128(3), 0),
+            (Uuid::from_u128(4), 10),
         ];
         let store = HybridAuthStore::new(entries).unwrap();
 
@@ -185,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_detection() {
-        let uuid = uuid_from_u128(42);
+        let uuid = Uuid::from_u128(42);
 
         // Duplicate in level 0
         let entries = vec![(uuid, 0), (uuid, 0)];
@@ -202,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_is_visible_level_0() {
-        let uuid = uuid_from_u128(1);
+        let uuid = Uuid::from_u128(1);
         let entries = vec![(uuid, 0)];
         let store = HybridAuthStore::new(entries).unwrap();
 
@@ -214,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_is_visible_higher_levels() {
-        let uuid = uuid_from_u128(1);
+        let uuid = Uuid::from_u128(1);
         let entries = vec![(uuid, 8)];
         let store = HybridAuthStore::new(entries).unwrap();
 
@@ -226,8 +202,8 @@ mod tests {
 
     #[test]
     fn test_is_visible_missing_uuid() {
-        let uuid = uuid_from_u128(999);
-        let entries = vec![(uuid_from_u128(1), 0)];
+        let uuid = Uuid::from_u128(999);
+        let entries = vec![(Uuid::from_u128(1), 0)];
         let store = HybridAuthStore::new(entries).unwrap();
 
         assert!(!store.is_visible(&uuid, 255));
@@ -235,9 +211,9 @@ mod tests {
 
     #[test]
     fn test_check_batch() {
-        let uuid1 = uuid_from_u128(1);
-        let uuid2 = uuid_from_u128(2);
-        let uuid3 = uuid_from_u128(3);
+        let uuid1 = Uuid::from_u128(1);
+        let uuid2 = Uuid::from_u128(2);
+        let uuid3 = Uuid::from_u128(3);
 
         let entries = vec![(uuid1, 0), (uuid2, 10), (uuid3, 15)];
         let store = HybridAuthStore::new(entries).unwrap();
@@ -253,10 +229,10 @@ mod tests {
     #[test]
     fn test_distribution_stats() {
         let entries = vec![
-            (uuid_from_u128(1), 0),
-            (uuid_from_u128(2), 0),
-            (uuid_from_u128(3), 0),
-            (uuid_from_u128(4), 5),
+            (Uuid::from_u128(1), 0),
+            (Uuid::from_u128(2), 0),
+            (Uuid::from_u128(3), 0),
+            (Uuid::from_u128(4), 5),
         ];
         let store = HybridAuthStore::new(entries).unwrap();
 
@@ -272,10 +248,10 @@ mod tests {
         // Simulate 90% at level 0, 10% at higher levels
         let mut entries = Vec::new();
         for i in 0..900 {
-            entries.push((uuid_from_u128(i), 0));
+            entries.push((Uuid::from_u128(i), 0));
         }
         for i in 900..1000 {
-            entries.push((uuid_from_u128(i), (i % 255) as u8 + 1));
+            entries.push((Uuid::from_u128(i), (i % 255) as u8 + 1));
         }
 
         let store = HybridAuthStore::new(entries).unwrap();

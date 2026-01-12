@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -32,7 +33,7 @@ pub struct BatchCheckResponse {
 /// Health check response
 #[derive(Debug, Deserialize, Serialize)]
 pub struct HealthResponse {
-    pub status: String,
+    pub status: Cow<'static, str>,
     pub uuid_count: usize,
 }
 

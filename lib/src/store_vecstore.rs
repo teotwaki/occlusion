@@ -45,8 +45,7 @@ impl crate::Store for VecStore {
         self.entries
             .binary_search_by_key(uuid, |(u, _)| *u)
             .ok()
-            .map(|idx| self.entries[idx].1 <= mask)
-            .unwrap_or(false)
+            .is_some_and(|idx| self.entries[idx].1 <= mask)
     }
 
     fn check_batch(&self, uuids: &[uuid::Uuid], mask: u8) -> bool {
@@ -79,33 +78,29 @@ mod tests {
     use crate::Store;
     use uuid::Uuid;
 
-    fn uuid_from_u128(n: u128) -> Uuid {
-        Uuid::from_u128(n)
-    }
-
     #[test]
     fn test_new_sorts_entries() {
         let entries = vec![
-            (uuid_from_u128(3), 10),
-            (uuid_from_u128(1), 5),
-            (uuid_from_u128(2), 15),
+            (Uuid::from_u128(3), 10),
+            (Uuid::from_u128(1), 5),
+            (Uuid::from_u128(2), 15),
         ];
         let store = VecStore::new(entries).unwrap();
-        assert_eq!(store.entries[0].0, uuid_from_u128(1));
-        assert_eq!(store.entries[1].0, uuid_from_u128(2));
-        assert_eq!(store.entries[2].0, uuid_from_u128(3));
+        assert_eq!(store.entries[0].0, Uuid::from_u128(1));
+        assert_eq!(store.entries[1].0, Uuid::from_u128(2));
+        assert_eq!(store.entries[2].0, Uuid::from_u128(3));
     }
 
     #[test]
     fn test_duplicate_detection() {
-        let uuid = uuid_from_u128(42);
+        let uuid = Uuid::from_u128(42);
         let entries = vec![(uuid, 10), (uuid, 20)];
         assert!(VecStore::new(entries).is_err());
     }
 
     #[test]
     fn test_is_visible() {
-        let uuid = uuid_from_u128(1);
+        let uuid = Uuid::from_u128(1);
         let entries = vec![(uuid, 8)];
         let store = VecStore::new(entries).unwrap();
 
@@ -113,15 +108,15 @@ mod tests {
         assert!(store.is_visible(&uuid, 8)); // 8 <= 8
         assert!(!store.is_visible(&uuid, 7)); // 8 > 7
 
-        let unknown_uuid = uuid_from_u128(999);
+        let unknown_uuid = Uuid::from_u128(999);
         assert!(!store.is_visible(&unknown_uuid, 255));
     }
 
     #[test]
     fn test_check_batch() {
-        let uuid1 = uuid_from_u128(1);
-        let uuid2 = uuid_from_u128(2);
-        let uuid3 = uuid_from_u128(3);
+        let uuid1 = Uuid::from_u128(1);
+        let uuid2 = Uuid::from_u128(2);
+        let uuid3 = Uuid::from_u128(3);
 
         let entries = vec![(uuid1, 5), (uuid2, 10), (uuid3, 15)];
         let store = VecStore::new(entries).unwrap();
@@ -140,7 +135,7 @@ mod tests {
         assert!(empty_store.is_empty());
         assert_eq!(empty_store.len(), 0);
 
-        let store = VecStore::new(vec![(uuid_from_u128(1), 5)]).unwrap();
+        let store = VecStore::new(vec![(Uuid::from_u128(1), 5)]).unwrap();
         assert!(!store.is_empty());
         assert_eq!(store.len(), 1);
     }
@@ -148,10 +143,10 @@ mod tests {
     #[test]
     fn test_visibility_distribution() {
         let entries = vec![
-            (uuid_from_u128(1), 5),
-            (uuid_from_u128(2), 5),
-            (uuid_from_u128(3), 10),
-            (uuid_from_u128(4), 5),
+            (Uuid::from_u128(1), 5),
+            (Uuid::from_u128(2), 5),
+            (Uuid::from_u128(3), 10),
+            (Uuid::from_u128(4), 5),
         ];
         let store = VecStore::new(entries).unwrap();
 
