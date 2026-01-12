@@ -1,4 +1,4 @@
-use crate::{HashMap, HashSet, StoreError};
+use crate::{DistributionStats, HashMap, HashSet, StoreError};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
@@ -65,25 +65,6 @@ impl FullHashStore {
                 0.0
             },
         }
-    }
-}
-
-/// Statistics about the distribution of UUIDs across visibility levels.
-#[derive(Debug, Clone)]
-pub struct DistributionStats {
-    pub total_uuids: usize,
-    pub level_0_count: usize,
-    pub higher_levels_count: usize,
-    pub level_0_percentage: f64,
-}
-
-impl std::fmt::Display for DistributionStats {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Total: {}, Level 0: {} ({:.1}%), Higher: {}",
-            self.total_uuids, self.level_0_count, self.level_0_percentage, self.higher_levels_count
-        )
     }
 }
 
