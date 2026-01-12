@@ -34,6 +34,7 @@ impl VecStore {
             return Err(StoreError::DuplicateUuid(dup[0].0));
         }
 
+        entries.shrink_to_fit();
         Ok(Self { entries })
     }
 }

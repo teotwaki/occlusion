@@ -1,6 +1,10 @@
 #[macro_use]
 extern crate rocket;
 
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use clap::{Parser, ValueEnum};
 use occlusion::{Store, SwappableStore};
 use rocket::figment::Figment;

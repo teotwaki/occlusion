@@ -43,6 +43,11 @@ impl FullHashStore {
         }
 
         let total = all_uuids.len();
+
+        for set in by_level.values_mut() {
+            set.shrink_to_fit();
+        }
+
         Ok(Self { by_level, total })
     }
 

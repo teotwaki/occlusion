@@ -62,6 +62,9 @@ impl HybridAuthStore {
             return Err(StoreError::DuplicateUuid(*uuid));
         }
 
+        level_0.shrink_to_fit();
+        higher_levels.shrink_to_fit();
+
         Ok(Self {
             level_0,
             higher_levels,

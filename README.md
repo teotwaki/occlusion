@@ -27,18 +27,26 @@ cargo run --release --bin server -- --help
 
 Selected at compile time via feature flags:
 
-| Feature | Store | Best For |
-|---------|-------|----------|
-| (default) | HashMapStore | General use |
-| `vec` | VecStore | Memory-constrained |
-| `hybrid` | HybridAuthStore | 80-90% at level 0 |
-| `fullhash` | FullHashStore | Worst-case optimization |
+| Feature | Store | Memory/UUID | Best For |
+|---------|-------|-------------|----------|
+| (default) | HashMapStore | ~30 bytes | General use |
+| `vec` | VecStore | ~17 bytes | Memory-constrained |
+| `hybrid` | HybridAuthStore | ~24 bytes | 80-90% at level 0 |
+| `fullhash` | FullHashStore | Highest | Worst-case optimization |
 
 ```bash
 cargo run --release --bin server --features hybrid -- data.csv
 ```
 
 Run `cargo bench -p occlusion --features bench` for performance comparisons.
+
+### Memory Allocator
+
+The server uses jemalloc by default for optimal memory efficiency. This reduces memory usage by ~3x compared to the system allocator by avoiding fragmentation from CSV parsing. To disable:
+
+```bash
+cargo build --release -p server --no-default-features
+```
 
 ## Static URL
 

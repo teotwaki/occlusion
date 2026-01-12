@@ -45,6 +45,7 @@ impl HashMapStore {
             }
         }
 
+        map.shrink_to_fit();
         Ok(Self { map })
     }
 }

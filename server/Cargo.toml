@@ -16,7 +16,7 @@ name = "generate-csv"
 path = "src/bin/generate_csv.rs"
 
 [features]
-default = []
+default = ["jemalloc"]
 # Use std HashMap instead of FxHash (slower, but resistant to DoS)
 nofx = ["occlusion/nofx"]
 
@@ -28,10 +28,14 @@ fullhash = ["occlusion/fullhash"]
 # Bake data source URL at compile time (set OCCLUSION_STATIC_URL env var)
 static-url = []
 
+# Use jemalloc for better memory efficiency
+jemalloc = ["dep:tikv-jemallocator"]
+
 [dependencies]
 occlusion = { path = "../lib" }
 
 clap = { version = "4.5.54", features = ["derive", "env"] }
+tikv-jemallocator = { version = "0.6", optional = true }
 csv = "1.4.0"
 rand = "0.9"
 reqwest = "0.13"
