@@ -162,9 +162,9 @@ mod tests {
         let store = FullHashStore::new(entries).unwrap();
 
         // Level 0 is visible at all masks
-        assert_eq!(store.is_visible(&uuid, 0), true);
-        assert_eq!(store.is_visible(&uuid, 10), true);
-        assert_eq!(store.is_visible(&uuid, 255), true);
+        assert!(store.is_visible(&uuid, 0));
+        assert!(store.is_visible(&uuid, 10));
+        assert!(store.is_visible(&uuid, 255));
     }
 
     #[test]
@@ -173,10 +173,10 @@ mod tests {
         let entries = vec![(uuid, 8)];
         let store = FullHashStore::new(entries).unwrap();
 
-        assert_eq!(store.is_visible(&uuid, 10), true); // 8 <= 10
-        assert_eq!(store.is_visible(&uuid, 8), true); // 8 <= 8
-        assert_eq!(store.is_visible(&uuid, 7), false); // 8 > 7
-        assert_eq!(store.is_visible(&uuid, 0), false); // 8 > 0
+        assert!(store.is_visible(&uuid, 10)); // 8 <= 10
+        assert!(store.is_visible(&uuid, 8)); // 8 <= 8
+        assert!(!store.is_visible(&uuid, 7)); // 8 > 7
+        assert!(!store.is_visible(&uuid, 0)); // 8 > 0
     }
 
     #[test]
@@ -185,7 +185,7 @@ mod tests {
         let entries = vec![(uuid_from_u128(1), 0)];
         let store = FullHashStore::new(entries).unwrap();
 
-        assert_eq!(store.is_visible(&uuid, 255), false);
+        assert!(!store.is_visible(&uuid, 255));
     }
 
     #[test]
