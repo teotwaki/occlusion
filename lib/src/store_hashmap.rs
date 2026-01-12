@@ -34,8 +34,7 @@ impl HashMapStore {
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
         #[cfg(not(feature = "nofx"))]
-        let mut map =
-            HashMap::with_capacity_and_hasher(entries.len(), rustc_hash::FxBuildHasher);
+        let mut map = HashMap::with_capacity_and_hasher(entries.len(), rustc_hash::FxBuildHasher);
 
         #[cfg(feature = "nofx")]
         let mut map = HashMap::with_capacity(entries.len());
