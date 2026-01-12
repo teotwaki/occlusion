@@ -87,16 +87,12 @@ mod tests {
     use super::*;
     use crate::Store;
 
-    fn uuid_from_u128(n: u128) -> Uuid {
-        Uuid::from_u128(n)
-    }
-
     #[test]
     fn test_new_stores_correctly() {
         let entries = vec![
-            (uuid_from_u128(1), 0),
-            (uuid_from_u128(2), 5),
-            (uuid_from_u128(3), 10),
+            (Uuid::from_u128(1), 0),
+            (Uuid::from_u128(2), 5),
+            (Uuid::from_u128(3), 10),
         ];
         let store = HashMapStore::new(entries).unwrap();
 
@@ -105,14 +101,14 @@ mod tests {
 
     #[test]
     fn test_duplicate_detection() {
-        let uuid = uuid_from_u128(42);
+        let uuid = Uuid::from_u128(42);
         let entries = vec![(uuid, 0), (uuid, 5)];
         assert!(HashMapStore::new(entries).is_err());
     }
 
     #[test]
     fn test_is_visible_level_0() {
-        let uuid = uuid_from_u128(1);
+        let uuid = Uuid::from_u128(1);
         let entries = vec![(uuid, 0)];
         let store = HashMapStore::new(entries).unwrap();
 
@@ -124,7 +120,7 @@ mod tests {
 
     #[test]
     fn test_is_visible_higher_levels() {
-        let uuid = uuid_from_u128(1);
+        let uuid = Uuid::from_u128(1);
         let entries = vec![(uuid, 8)];
         let store = HashMapStore::new(entries).unwrap();
 
@@ -136,8 +132,8 @@ mod tests {
 
     #[test]
     fn test_is_visible_missing_uuid() {
-        let uuid = uuid_from_u128(999);
-        let entries = vec![(uuid_from_u128(1), 0)];
+        let uuid = Uuid::from_u128(999);
+        let entries = vec![(Uuid::from_u128(1), 0)];
         let store = HashMapStore::new(entries).unwrap();
 
         assert!(!Store::is_visible(&store, &uuid, 255));
@@ -145,9 +141,9 @@ mod tests {
 
     #[test]
     fn test_check_batch() {
-        let uuid1 = uuid_from_u128(1);
-        let uuid2 = uuid_from_u128(2);
-        let uuid3 = uuid_from_u128(3);
+        let uuid1 = Uuid::from_u128(1);
+        let uuid2 = Uuid::from_u128(2);
+        let uuid3 = Uuid::from_u128(3);
 
         let entries = vec![(uuid1, 0), (uuid2, 10), (uuid3, 15)];
         let store = HashMapStore::new(entries).unwrap();
@@ -166,7 +162,7 @@ mod tests {
         assert!(Store::is_empty(&empty_store));
         assert_eq!(Store::len(&empty_store), 0);
 
-        let store = HashMapStore::new(vec![(uuid_from_u128(1), 5)]).unwrap();
+        let store = HashMapStore::new(vec![(Uuid::from_u128(1), 5)]).unwrap();
         assert!(!Store::is_empty(&store));
         assert_eq!(Store::len(&store), 1);
     }
