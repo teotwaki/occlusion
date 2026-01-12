@@ -1,3 +1,7 @@
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::semicolon_if_nothing_returned)]
+
 //! Benchmarks comparing all store implementations.
 //!
 //! Run with: `cargo bench -p occlusion --features bench`

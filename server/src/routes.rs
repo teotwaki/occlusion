@@ -1,10 +1,11 @@
-use crate::models::*;
+use crate::models::{
+    BatchCheckRequest, BatchCheckResponse, CheckRequest, CheckResponse, HealthResponse,
+    OpaBatchVisibleInput, OpaRequest, OpaResponse, OpaVisibleInput, StatsResponse,
+};
 use occlusion::{Store, SwappableStore};
 use rocket::{State, serde::json::Json};
 
-/// Check if a single object is visible under the given visibility mask
-///
-/// POST /api/v1/check
+/// Check if a single object is visible under the given visibility mask.
 #[post("/api/v1/check", data = "<request>")]
 pub fn check(store: &State<SwappableStore>, request: Json<CheckRequest>) -> Json<CheckResponse> {
     let is_visible = store.is_visible(&request.object, request.visibility_mask);
@@ -14,9 +15,7 @@ pub fn check(store: &State<SwappableStore>, request: Json<CheckRequest>) -> Json
     })
 }
 
-/// Check multiple objects against the same visibility mask
-///
-/// POST /api/v1/check/batch
+/// Check multiple objects against the same visibility mask.
 #[post("/api/v1/check/batch", data = "<request>")]
 pub fn check_batch(
     store: &State<SwappableStore>,
@@ -26,9 +25,7 @@ pub fn check_batch(
     Json(BatchCheckResponse { all_visible })
 }
 
-/// Health check endpoint
-///
-/// GET /health
+/// Health check endpoint.
 #[get("/health")]
 pub fn health(store: &State<SwappableStore>) -> Json<HealthResponse> {
     Json(HealthResponse {
@@ -37,9 +34,7 @@ pub fn health(store: &State<SwappableStore>) -> Json<HealthResponse> {
     })
 }
 
-/// Get statistics about the store
-///
-/// GET /api/v1/stats
+/// Get statistics about the store.
 #[get("/api/v1/stats")]
 pub fn stats(store: &State<SwappableStore>) -> Json<StatsResponse> {
     Json(StatsResponse {
@@ -52,12 +47,7 @@ pub fn stats(store: &State<SwappableStore>) -> Json<StatsResponse> {
 // OPA-Compatible Endpoints
 // ============================================================================
 
-/// OPA-compatible visibility check
-///
-/// POST /v1/data/occlusion/visible
-///
-/// Request: `{"input": {"object": "uuid", "visibility_mask": 10}}`
-/// Response: `{"result": true}`
+/// OPA-compatible visibility check.
 #[post("/v1/data/occlusion/visible", data = "<request>")]
 pub fn opa_visible(
     store: &State<SwappableStore>,
@@ -67,12 +57,7 @@ pub fn opa_visible(
     Json(OpaResponse { result: is_visible })
 }
 
-/// OPA-compatible batch visibility check
-///
-/// POST /v1/data/occlusion/visible_batch
-///
-/// Request: `{"input": {"objects": ["uuid1", "uuid2"], "visibility_mask": 10}}`
-/// Response: `{"result": true}` (true if all objects are visible)
+/// OPA-compatible batch visibility check.
 #[post("/v1/data/occlusion/visible_batch", data = "<request>")]
 pub fn opa_visible_batch(
     store: &State<SwappableStore>,

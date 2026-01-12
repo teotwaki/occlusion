@@ -18,12 +18,12 @@ use uuid::Uuid;
 /// - Memory: ~17 bytes/UUID (most efficient)
 #[derive(Debug, Clone)]
 pub struct VecStore {
-    /// Sorted array of (UUID, visibility_level) pairs
+    /// Sorted array of (UUID, `visibility_level`) pairs
     entries: Vec<(Uuid, u8)>,
 }
 
 impl VecStore {
-    /// Create a new VecStore from a vector of (UUID, visibility) pairs.
+    /// Create a new `VecStore` from a vector of (UUID, visibility) pairs.
     ///
     /// The entries will be sorted by UUID for efficient binary search.
     /// Duplicates will cause an error to be returned.
@@ -45,8 +45,7 @@ impl crate::Store for VecStore {
         self.entries
             .binary_search_by_key(uuid, |(u, _)| *u)
             .ok()
-            .map(|idx| self.entries[idx].1 <= mask)
-            .unwrap_or(false)
+            .is_some_and(|idx| self.entries[idx].1 <= mask)
     }
 
     fn check_batch(&self, uuids: &[uuid::Uuid], mask: u8) -> bool {

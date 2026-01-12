@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 /// Hybrid authorization store optimized for skewed distributions.
 ///
-/// Uses a HashSet for visibility level 0 (fast O(1) lookup) and a sorted
+/// Uses a `HashSet` for visibility level 0 (fast O(1) lookup) and a sorted
 /// array for higher visibility levels (O(log n) binary search).
 ///
 /// This is optimized for workloads where 80-90% of UUIDs have visibility 0.
@@ -12,17 +12,17 @@ use uuid::Uuid;
 ///
 /// ## When to Use
 /// - Known skewed distribution (80-90% at level 0)
-/// - Need similar performance to HashMap but with slightly lower memory for the hot path
+/// - Need similar performance to `HashMap` but with slightly lower memory for the hot path
 /// - Want optimized early exit for mask=0 queries
 ///
-/// ## Performance (2M UUIDs, 90% at level 0, with FxHash)
+/// ## Performance (2M UUIDs, 90% at level 0, with `FxHash`)
 /// - Level 0 lookup: ~2.5ns (90% of queries)
 /// - Higher level lookup: ~48ns (10% of queries)
 /// - Batch (100): ~780ns
 /// - Memory: ~24 bytes/UUID for level 0, ~17 for others
 #[derive(Debug, Clone)]
 pub struct HybridAuthStore {
-    /// HashSet for O(1) lookup of UUIDs at visibility level 0
+    /// `HashSet` for O(1) lookup of UUIDs at visibility level 0
     level_0: HashSet<Uuid>,
 
     /// Sorted array for binary search of UUIDs at visibility levels 1-255
@@ -30,12 +30,12 @@ pub struct HybridAuthStore {
 }
 
 impl HybridAuthStore {
-    /// Create a new HybridAuthStore from a vector of (UUID, visibility) pairs.
+    /// Create a new `HybridAuthStore` from a vector of (UUID, visibility) pairs.
     ///
-    /// Entries at visibility level 0 go into a HashSet, others into a sorted array.
+    /// Entries at visibility level 0 go into a `HashSet`, others into a sorted array.
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
-        let mut level_0: HashSet<_> = Default::default();
+        let mut level_0: HashSet<_> = HashSet::default();
         let mut higher_levels = Vec::new();
 
         // Partition by visibility level
@@ -128,8 +128,7 @@ impl crate::Store for HybridAuthStore {
         self.higher_levels
             .binary_search_by_key(uuid, |(u, _)| *u)
             .ok()
-            .map(|idx| self.higher_levels[idx].1 <= mask)
-            .unwrap_or(false)
+            .is_some_and(|idx| self.higher_levels[idx].1 <= mask)
     }
 
     fn check_batch(&self, uuids: &[Uuid], mask: u8) -> bool {

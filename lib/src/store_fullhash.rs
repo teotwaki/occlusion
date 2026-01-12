@@ -2,9 +2,9 @@ use crate::{HashMap, HashSet, StoreError};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-/// Full hash-based authorization store using one HashSet per visibility level.
+/// Full hash-based authorization store using one `HashSet` per visibility level.
 ///
-/// Uses a sparse BTreeMap of HashSets, only allocating for levels that have entries.
+/// Uses a sparse `BTreeMap` of `HashSets`, only allocating for levels that have entries.
 /// Provides O(1) lookups per level with early exit on `is_visible`.
 ///
 /// ## When to Use
@@ -12,7 +12,7 @@ use uuid::Uuid;
 /// - Want guaranteed O(1) lookups regardless of distribution
 /// - Data uses a small subset of the 256 possible visibility levels
 ///
-/// ## Performance (2M UUIDs, with FxHash)
+/// ## Performance (2M UUIDs, with `FxHash`)
 /// - Level 0 lookup: ~2.3ns
 /// - Higher level lookup: ~21ns (checks multiple levels with early exit)
 /// - Worst case (mask=0): ~6.2ns (best of all implementations)
@@ -26,14 +26,14 @@ pub struct FullHashStore {
 }
 
 impl FullHashStore {
-    /// Create a new FullHashStore from a vector of (UUID, visibility) pairs.
+    /// Create a new `FullHashStore` from a vector of (UUID, visibility) pairs.
     ///
-    /// Each UUID is placed in the HashSet corresponding to its visibility level.
+    /// Each UUID is placed in the `HashSet` corresponding to its visibility level.
     /// Only levels with entries are allocated.
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
         let mut by_level: BTreeMap<u8, HashSet<Uuid>> = BTreeMap::new();
-        let mut all_uuids: HashSet<Uuid> = Default::default();
+        let mut all_uuids: HashSet<Uuid> = HashSet::default();
 
         for (uuid, level) in entries {
             if !all_uuids.insert(uuid) {
@@ -53,7 +53,7 @@ impl FullHashStore {
 
     /// Returns statistics about the store distribution.
     pub fn distribution_stats(&self) -> DistributionStats {
-        let level_0_count = self.by_level.get(&0).map_or(0, |s| s.len());
+        let level_0_count = self.by_level.get(&0).map_or(0, HashSet::len);
 
         DistributionStats {
             total_uuids: self.total,

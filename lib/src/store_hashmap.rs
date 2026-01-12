@@ -1,7 +1,7 @@
 use crate::{HashMap, StoreError};
 use uuid::Uuid;
 
-/// Pure HashMap-based authorization store (RECOMMENDED DEFAULT).
+/// Pure `HashMap`-based authorization store (RECOMMENDED DEFAULT).
 ///
 /// Uses a single `HashMap<Uuid, u8>` for pure O(1) lookups.
 /// This is the simplest and fastest implementation in almost all scenarios.
@@ -12,29 +12,30 @@ use uuid::Uuid;
 /// - Need consistent, predictable O(1) performance
 /// - Simplicity and speed are priorities
 ///
-/// ## Performance (2M UUIDs, with FxHash)
+/// ## Performance (2M UUIDs, with `FxHash`)
 /// - All lookups: ~2.7ns (consistent O(1))
 /// - Batch (100): ~347ns (fastest)
-/// - Memory: ~24-32 bytes/UUID (standard HashMap overhead)
+/// - Memory: ~24-32 bytes/UUID (standard `HashMap` overhead)
 ///
 /// ## Advantages
 /// - **Fastest** in uniform distributions (4x faster than sorted)
-/// - **Simplest** implementation (single HashMap)
+/// - **Simplest** implementation (single `HashMap`)
 /// - **Consistent** performance regardless of visibility level or mask
 /// - Competitive with specialized implementations even on skewed workloads
 #[derive(Debug, Clone)]
 pub struct HashMapStore {
-    /// HashMap mapping UUID to visibility level
+    /// `HashMap` mapping UUID to visibility level
     map: HashMap<Uuid, u8>,
 }
 
 impl HashMapStore {
-    /// Create a new HashMapStore from a vector of (UUID, visibility) pairs.
+    /// Create a new `HashMapStore` from a vector of (UUID, visibility) pairs.
     ///
     /// Duplicates will cause an error to be returned.
     pub fn new(entries: Vec<(Uuid, u8)>) -> Result<Self, StoreError> {
         #[cfg(not(feature = "nofx"))]
-        let mut map = HashMap::with_capacity_and_hasher(entries.len(), Default::default());
+        let mut map =
+            HashMap::with_capacity_and_hasher(entries.len(), rustc_hash::FxBuildHasher);
 
         #[cfg(feature = "nofx")]
         let mut map = HashMap::with_capacity(entries.len());
@@ -52,10 +53,7 @@ impl HashMapStore {
 
 impl crate::Store for HashMapStore {
     fn is_visible(&self, uuid: &Uuid, mask: u8) -> bool {
-        self.map
-            .get(uuid)
-            .map(|level| *level <= mask)
-            .unwrap_or(false)
+        self.map.get(uuid).is_some_and(|level| *level <= mask)
     }
 
     fn check_batch(&self, uuids: &[Uuid], mask: u8) -> bool {

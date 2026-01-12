@@ -56,7 +56,7 @@ fn build_from_bytes(content: impl AsRef<[u8]>) -> Result<ActiveStore> {
 
     info!(
         entries = entries.len(),
-        elapsed_ms = start.elapsed().as_millis() as u64,
+        elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
         "CSV parsed"
     );
 
@@ -64,7 +64,7 @@ fn build_from_bytes(content: impl AsRef<[u8]>) -> Result<ActiveStore> {
     let store = occlusion::build_store(entries)?;
     info!(
         uuid_count = store.len(),
-        elapsed_ms = start.elapsed().as_millis() as u64,
+        elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
         "store built"
     );
 
@@ -75,10 +75,10 @@ fn build_from_bytes(content: impl AsRef<[u8]>) -> Result<ActiveStore> {
 async fn spawn_build(content: Vec<u8>) -> Result<ActiveStore> {
     tokio::task::spawn_blocking(move || build_from_bytes(content))
         .await
-        .map_err(|e| LoadError::InvalidFormat(format!("Task join error: {}", e)))?
+        .map_err(|e| LoadError::InvalidFormat(format!("Task join error: {e}")))?
 }
 
-/// Load store from a DataSource, optionally checking if it changed.
+/// Load store from a `DataSource`, optionally checking if it changed.
 ///
 /// - If `old_metadata` is `None`, always loads and returns `Some`.
 /// - If `old_metadata` is `Some`, returns `None` if unchanged.
@@ -107,7 +107,7 @@ async fn load_file(
 
     let content = tokio::task::spawn_blocking(move || std::fs::read(path))
         .await
-        .map_err(|e| LoadError::InvalidFormat(format!("Task join error: {}", e)))??;
+        .map_err(|e| LoadError::InvalidFormat(format!("Task join error: {e}")))??;
 
     let store = spawn_build(content).await?;
     Ok(Some((store, new_metadata)))
@@ -149,17 +149,17 @@ async fn load_url(
             .headers()
             .get("etag")
             .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string()),
+            .map(ToString::to_string),
         last_modified: response
             .headers()
             .get("last-modified")
             .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string()),
+            .map(ToString::to_string),
     };
 
     let content = response.bytes().await?.to_vec();
     info!(
-        elapsed_ms = start.elapsed().as_millis() as u64,
+        elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
         "HTTP fetch completed"
     );
 

@@ -12,7 +12,7 @@ pub enum DataSource {
 }
 
 impl DataSource {
-    /// Parse a string into a DataSource.
+    /// Parse a string into a `DataSource`.
     ///
     /// Strings starting with "http://" or "https://" are treated as URLs,
     /// everything else is treated as a file path.
@@ -38,7 +38,7 @@ impl std::fmt::Display for DataSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DataSource::File(path) => write!(f, "{}", path.display()),
-            DataSource::Url(url) => write!(f, "{}", url),
+            DataSource::Url(url) => write!(f, "{url}"),
         }
     }
 }
@@ -46,12 +46,12 @@ impl std::fmt::Display for DataSource {
 /// Metadata about a data source used for conditional reloading.
 ///
 /// For files, this tracks the modification time.
-/// For URLs, this tracks ETag and Last-Modified headers.
+/// For URLs, this tracks `ETag` and Last-Modified headers.
 #[derive(Debug, Clone, Default)]
 pub struct SourceMetadata {
     /// File modification time (for file sources)
     pub mtime: Option<SystemTime>,
-    /// ETag header value (for URL sources)
+    /// `ETag` header value (for URL sources)
     pub etag: Option<String>,
     /// Last-Modified header value (for URL sources)
     pub last_modified: Option<String>,

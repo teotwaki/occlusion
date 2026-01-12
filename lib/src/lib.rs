@@ -1,3 +1,9 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::cast_precision_loss)]
+
 //! # Occlusion Store
 //!
 //! A high-performance authorization store for managing UUID visibility levels.
@@ -13,26 +19,26 @@
 //!
 //! The active store implementation is selected at compile time via feature flags:
 //!
-//! - **Default (no feature)**: `HashMapStore` - O(1) lookups, ~2.7ns with FxHash
+//! - **Default (no feature)**: `HashMapStore` - O(1) lookups, ~2.7ns with `FxHash`
 //! - **`--features vec`**: `VecStore` - O(log n) lookups, ~51ns, lowest memory
 //! - **`--features hybrid`**: `HybridAuthStore` - Optimized for skewed distributions
-//! - **`--features fullhash`**: `FullHashStore` - 256 HashSets, best worst-case
+//! - **`--features fullhash`**: `FullHashStore` - 256 `HashSets`, best worst-case
 //!
-//! ## Performance (with FxHash, 2M UUIDs)
+//! ## Performance (with `FxHash`, 2M UUIDs)
 //!
 //! | Implementation | Lookup | Batch (100) | Memory |
 //! |----------------|--------|-------------|--------|
-//! | HashMapStore | 2.7ns | 347ns | ~24-32 bytes/UUID |
-//! | VecStore | 51ns | 7.9µs | ~17 bytes/UUID |
-//! | HybridAuthStore | 2.5-48ns | 780ns | ~24 bytes/UUID |
-//! | FullHashStore | 2.3-21ns | 422ns | Highest |
+//! | `HashMapStore` | 2.7ns | 347ns | ~24-32 bytes/UUID |
+//! | `VecStore` | 51ns | 7.9µs | ~17 bytes/UUID |
+//! | `HybridAuthStore` | 2.5-48ns | 780ns | ~24 bytes/UUID |
+//! | `FullHashStore` | 2.3-21ns | 422ns | Highest |
 //!
 //! ## Feature Flags
 //!
-//! - `nofx`: Use std HashMap instead of FxHash (slower but no extra dependency)
-//! - `vec`: Use VecStore (sorted vector with binary search)
-//! - `hybrid`: Use HybridAuthStore (HashSet for level 0 + sorted vector)
-//! - `fullhash`: Use FullHashStore (256 HashSets, one per level)
+//! - `nofx`: Use std `HashMap` instead of `FxHash` (slower but no extra dependency)
+//! - `vec`: Use `VecStore` (sorted vector with binary search)
+//! - `hybrid`: Use `HybridAuthStore` (`HashSet` for level 0 + sorted vector)
+//! - `fullhash`: Use `FullHashStore` (256 `HashSets`, one per level)
 //! - `bench`: Enable all stores for benchmark comparisons
 //!
 //! ## Thread Safety
@@ -129,7 +135,7 @@ pub type ActiveStore = VecStore;
 #[cfg(not(any(feature = "vec", feature = "hybrid", feature = "fullhash")))]
 pub type ActiveStore = HashMapStore;
 
-/// Build an ActiveStore from a vector of (UUID, visibility_level) pairs.
+/// Build an `ActiveStore` from a vector of (UUID, `visibility_level`) pairs.
 ///
 /// The store implementation is selected at compile time based on feature flags.
 #[cfg(feature = "fullhash")]
